@@ -12,7 +12,7 @@ const defaultEncoderSel: number = 1;
 const defaultBitRateSel: number = 3;
 const defaultFrameRatesSel: number = 1;
 
-const configurationOptions = {
+const peabodyConfiguration = {
     resolutionSelectVal: 1,
     resolution: [
         '4K',
@@ -90,7 +90,7 @@ export class CameraService extends EventEmitter {
 
             let result = await this.login();
             if (result === true) {
-                result = await this.getConfigurationOptions();
+                result = await this.getConfiguration();
             }
 
             if (result === true) {
@@ -121,47 +121,42 @@ export class CameraService extends EventEmitter {
         }
     }
 
-    public async getConfigurationValues(): Promise<any> {
+    public async getConfiguration(): Promise<any> {
         // const response = JSON.parse(await this.ipcGetRequest('/video'));
-        const response = configurationOptions;
+        const response = peabodyConfiguration;
+
+        // create a synthetic prop for hdmi preview on/off
+        // create a synthetic prop for vam engine on/off
+        // session id
+        // wireless ip
+        // rtsp video url
+        // rtsp vam url
+        // this needs to return the model files
+        // perhaps it needs to get the overlay config??
 
         if (response.status === true) {
-            return {
-                resolutionSelectVal: response.resolutionSelectVal,
-                encodeModeSelectVal: response.encodeModeSelectVal,
-                bitRateSelectVal: response.bitRateSelectVal,
-                fpsSelectVal: response.fpsSelectVal,
-                displayOut: response.displayOut,
-                status: response.status
-            };
+            this.resolutions = [...response.resolution];
+            this.encoders = [...response.encodeMode];
+            this.bitRates = [...response.bitRate];
+            this.frameRates = [...response.fps];
+
+            return response;
         }
 
-        return response.status;
+        return {
+            status: response.status
+        };
     }
 
     public async resetCameraServices(): Promise<void> {
-        await promisify(exec)(`pkill /usr/bin/ipc-webserver`);
-        await promisify(exec)(`pkill /usr/bin/qmmf-server`);
-    }
-
-    private async getConfigurationOptions(): Promise<boolean> {
         try {
-            // const response = JSON.parse(await this.ipcGetRequest('/video'));
-            const response = configurationOptions;
+            await promisify(exec)(`pkill /usr/bin/ipc-webserver`);
+            await promisify(exec)(`pkill /usr/bin/qmmf-server`);
 
-            if (response.status === true) {
-                this.resolutions = [...response.resolution];
-                this.encoders = [...response.encodeMode];
-                this.bitRates = [...response.bitRate];
-                this.frameRates = [...response.fps];
-            }
-
-            return response.status;
+            await this.sleep(2000);
         }
         catch (ex) {
-            this.logger.log(['CameraService', 'error'], ex.message);
-
-            return false;
+            this.logger.log(['CameraService', 'error'], `Failed to reset system services: ${ex.message}`);
         }
     }
 
@@ -418,6 +413,10 @@ export class CameraService extends EventEmitter {
     }
 
     private async ipcRequest(method: string, path: string, params: string, payload?: any): Promise<any> {
+        if (!this.sessionToken) {
+            throw new Error('No valid login session available');
+        }
+
         try {
             const url = params ? `${path}?${params}` : path;
             const options = {
