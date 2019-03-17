@@ -81,4 +81,5 @@ coverage.html
 
 # Peabody local service
 storage
+peabody
 configs/**
