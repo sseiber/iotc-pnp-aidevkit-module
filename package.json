@@ -1,6 +1,6 @@
 {
   "name": "peabody-local-service",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Local service for Peabody",
   "main": "index.js",
   "config": {
@@ -18,7 +18,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git@github.com:sseiber/Peabody-Local-Service.git"
+    "url": "git@github.com:sseiber/peabody-local-service.git"
   },
   "dependencies": {
     "@sseiber/sprightly": "^1.0.8",
