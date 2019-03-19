@@ -1,6 +1,6 @@
 {
   "name": "peabody-local-service",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Local service for Peabody",
   "main": "index.js",
   "config": {
@@ -10,6 +10,7 @@
     "test": "node ./node_modules/jest/bin/jest.js",
     "tslint": "node ./node_modules/tslint/bin/tslint -p ./tsconfig.json",
     "build": "node ./node_modules/typescript/bin/tsc -p .",
+    "docker_build": "node ./scripts/docker_build.js --docker-build",
     "preversion": "npm test",
     "version": "node ./scripts/docker_build.js --docker-build",
     "postversion": "node ./scripts/docker_build.js --docker-push"
