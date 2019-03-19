@@ -23,7 +23,7 @@ export class StorageService {
     public async init() {
         this.logger.log(['StorageService', 'info'], 'initialize');
 
-        this.storageDirectory = pathJoin((this.server.settings.app as any).peabodyDirectory, 'peabody', 'storage');
+        this.storageDirectory = pathJoin((this.server.settings.app as any).peabodyDirectory, 'storage');
 
         this.setup();
     }

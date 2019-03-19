@@ -1,6 +1,9 @@
-FROM node:10
+FROM arm32v7/alpine:3.9
 
-RUN apt-get update && apt-get install -y \
+RUN apk add --update --no-cache nodejs nodejs-npm --repository=http://dl-cdn.alpinelinux.org/alpine/edge/main
+
+RUN apk update && apk add --no-cache \
+    bash \
     libgstreamer1.0 \
     gstreamer1.0-plugins-base \
     gstreamer1.0-plugins-good \

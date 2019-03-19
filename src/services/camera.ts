@@ -516,7 +516,7 @@ export class CameraService extends EventEmitter {
     }
 
     private async retrieveModelFiles() {
-        const storageDirectory = pathJoin((this.server.settings.app as any).peabodyDirectory, 'peabody', 'camera');
+        const storageDirectory = pathJoin((this.server.settings.app as any).peabodyDirectory, 'camera');
         return fse.readdir(storageDirectory);
     }
 }
