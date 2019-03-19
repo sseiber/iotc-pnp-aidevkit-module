@@ -25,7 +25,7 @@ export class StateService {
     public async init() {
         this.logger.log(['StateService', 'info'], 'initialize');
 
-        this.stateFile = this.config.get('serviceSettings_systemName') ? `${this.config.get('serviceSettings_systemName')}-state` : 'state';
+        this.stateFile = this.config.get('systemName') ? `${this.config.get('systemName')}-state` : 'state';
 
         await this.loadState();
     }

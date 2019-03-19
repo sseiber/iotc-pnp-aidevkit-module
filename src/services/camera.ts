@@ -6,15 +6,15 @@ import * as request from 'request';
 import { EventEmitter } from 'events';
 import * as _get from 'lodash.get';
 import { promisify } from 'util';
-import { exec } from 'child_process';
+import { exec, execFile } from 'child_process';
 import * as fse from 'fs-extra';
 import { join as pathJoin } from 'path';
 import { platform as osPlatform } from 'os';
 
-const defaultResolutionSel: number = 1;
-const defaultEncoderSel: number = 1;
-const defaultBitRateSel: number = 3;
-const defaultFrameRatesSel: number = 1;
+const defaultresolutionSelectVal: number = 1;
+const defaultencodeModeSelectVal: number = 1;
+const defaultbitRateSelectVal: number = 3;
+const defaultfpsSelectVal: number = 1;
 
 @service('camera')
 export class CameraService extends EventEmitter {
@@ -36,26 +36,50 @@ export class CameraService extends EventEmitter {
     private encoders: string[] = [];
     private bitRates: string[] = [];
     private frameRates: number[] = [];
+    private videoSettings = {
+        resolutionSelectVal: defaultresolutionSelectVal,
+        encodeModeSelectVal: defaultencodeModeSelectVal,
+        bitRateSelectVal: defaultbitRateSelectVal,
+        fpsSelectVal: defaultfpsSelectVal,
+        displayOut: 0
+    };
 
-    public get resolutionSelections() {
-        return this.resolutions;
+    public get currentResolutionSelectVal() {
+        return this.videoSettings.resolutionSelectVal;
     }
 
-    public get encoderSelections() {
-        return this.encoders;
+    public get currentEncodeModeSelectVal() {
+        return this.videoSettings.encodeModeSelectVal;
     }
 
-    public get bitRateSelections() {
-        return this.bitRates;
+    public get currentBitRateSelectVal() {
+        return this.videoSettings.bitRateSelectVal;
     }
 
-    public get frameRateSelections() {
-        return this.frameRates;
+    public get currentFpsSelectVal() {
+        return this.videoSettings.fpsSelectVal;
+    }
+
+    public get currentDisplayOutVal() {
+        return this.videoSettings.displayOut;
     }
 
     public async init() {
         this.logger.log(['CameraService', 'info'], 'initialize');
 
+        // ###
+        // ### This requires a side service running in the the host
+        // ###
+        // // This is a bit harsh, but if the image gets applied in the middle of an
+        // // existing session (e.g. IoT Edge deployment decides to update the image)
+        // // then we can't make any assumptions about the existing running system.
+        // // Until another more elegant approach gets figured out initialization of this
+        // // image will forcefully take down:
+        // //   - /usr/bin/ipc-webserver
+        // //   - /usr/bin/qmmf-server
+        // // then wait 10seconds for things to settle down before attempting a new login.
+
+        // await this.resetCameraServices();
         await this.login();
     }
 
@@ -112,10 +136,15 @@ export class CameraService extends EventEmitter {
             const response = JSON.parse(await this.ipcGetRequest('/video'));
 
             if (response.status === true) {
+                this.videoSettings.resolutionSelectVal = response.resolutionSelectVal;
                 this.resolutions = [...response.resolution];
+                this.videoSettings.encodeModeSelectVal = response.encodeModeSelectVal;
                 this.encoders = [...response.encodeMode];
+                this.videoSettings.bitRateSelectVal = response.bitRateSelectVal;
                 this.bitRates = [...response.bitRate];
+                this.videoSettings.fpsSelectVal = response.fpsSelectVal;
                 this.frameRates = [...response.fps];
+                this.videoSettings.displayOut = response.displayOut;
 
                 return {
                     ...response,
@@ -143,15 +172,18 @@ export class CameraService extends EventEmitter {
     public async resetCameraServices(): Promise<void> {
         try {
             if (osPlatform() === 'darwin') {
-                await promisify(exec)(`adb shell pkill /usr/bin/ipc-webserver`);
-                await promisify(exec)(`adb shell pkill /usr/bin/qmmf-server`);
+                await promisify(execFile)(`adb`, `shell pkill -9 ipc-webserver`.split(' '));
+                await promisify(execFile)(`adb`, `shell pkill -9 qmmf-server`.split(' '));
             }
             else {
-                await promisify(exec)(`pkill /usr/bin/ipc-webserver`);
-                await promisify(exec)(`pkill /usr/bin/qmmf-server`);
+                // ###
+                // ### This requires a side service running in the the host
+                // ###
+                await promisify(execFile)(`pkill`, `-9 ipc-webserver`.split(' '));
+                await promisify(execFile)(`pkill`, `-9 qmmf-server`.split(' '));
             }
 
-            await this.sleep(5000);
+            await this.sleep(10000);
         }
         catch (ex) {
             this.logger.log(['CameraService', 'error'], `Failed to reset system services: ${ex.message}`);
@@ -161,12 +193,17 @@ export class CameraService extends EventEmitter {
     public async rebootCamera(): Promise<void> {
         try {
             if (osPlatform() === 'darwin') {
-                await promisify(exec)(`adb shell reboot`);
+                await promisify(execFile)(`adb`, `shell reboot`.split(' '));
             }
             else {
-                await promisify(exec)(`reboot`);
+                // ###
+                // ### This requires a side service running in the the host
+                // ###
+                await promisify(execFile)(`reboot`);
             }
 
+            // The camera is about to shutdown - this wait is just to keep
+            // anything else from attempting to happen while shutdown proceeds
             await this.sleep(5000);
         }
         catch (ex) {
@@ -176,11 +213,52 @@ export class CameraService extends EventEmitter {
 
     public async togglePreview(status: boolean): Promise<boolean> {
         try {
-            let result = await this.uninitializeCamera();
+            return this.ipcPostRequest('/preview', { switchStatus: status });
+        }
+        catch (ex) {
+            this.logger.log(['CameraService', 'error'], ex.message);
 
-            if (result && status === true) {
-                result = await this.ipcPostRequest('/preview', { switchStatus: status });
-            }
+            return false;
+        }
+    }
+
+    public async toggleVam(status: boolean): Promise<boolean> {
+        try {
+            return this.ipcPostRequest('/vam', { switchStatus: status, vamconfig: 'MD' });
+        }
+        catch (ex) {
+            this.logger.log(['CameraService', 'error'], ex.message);
+
+            return false;
+        }
+    }
+
+    public async toggleOverlay(status): Promise<boolean> {
+        try {
+            return this.ipcPostRequest('/overlay', { switchStatus: status });
+        }
+        catch (ex) {
+            this.logger.log(['CameraService', 'error'], ex.message);
+
+            return false;
+        }
+    }
+
+    public async configureDisplayOut(videoSettings): Promise<boolean> {
+        const payload = {
+            resolutionSelectVal: (videoSettings.resolutionSelectVal < this.resolutions.length) ? videoSettings.resolutionSelectVal : this.videoSettings.resolutionSelectVal,
+            encodeModeSelectVal: (videoSettings.encodeModeSelectVal < this.encoders.length) ? videoSettings.encodeModeSelectVal : this.videoSettings.encodeModeSelectVal,
+            bitRateSelectVal: (videoSettings.bitRateSelectVal < this.bitRates.length) ? videoSettings.bitRateSelectVal : this.videoSettings.bitRateSelectVal,
+            fpsSelectVal: (videoSettings.fpsSelectVal < this.frameRates.length) ? videoSettings.fpsSelectVal : this.videoSettings.fpsSelectVal,
+            displayOut: this.videoSettings.displayOut
+        };
+
+        try {
+            const result = await this.ipcPostRequest('/video', payload);
+
+            this.videoSettings = {
+                ...payload
+            };
 
             return result;
         }
@@ -191,20 +269,16 @@ export class CameraService extends EventEmitter {
         }
     }
 
-    public async toggleVam(status: boolean): Promise<boolean> {
-        const payload = {
-            switchStatus: status,
-            vamconfig: 'MD'
-        };
-
-        try {
-            return this.ipcPostRequest('/vam', payload);
+    public configureOverlay(type: string, text?: string): Promise<boolean> {
+        if (type === 'inference') {
+            return this.configureInferenceOverlay();
         }
-        catch (ex) {
-            this.logger.log(['CameraService', 'error'], ex.message);
-
-            return false;
+        else if (type === 'text') {
+            return this.configureTextOverlay(text);
         }
+
+        this.logger.log(['CameraService', 'error'], 'Invalid overlay type use (inference/text)');
+        return Promise.resolve(false);
     }
 
     private async initializeCamera(): Promise<boolean> {
@@ -212,7 +286,10 @@ export class CameraService extends EventEmitter {
             let result = await this.ipcPostRequest('/preview', { switchStatus: false });
 
             if (result === true) {
-                result = await this.configurePreview(defaultResolutionSel, defaultEncoderSel, defaultBitRateSel, defaultFrameRatesSel, 0);
+                result = await this.configureDisplayOut({
+                    ...this.videoSettings,
+                    displayOut: 0
+                });
             }
 
             if (result === true) {
@@ -228,7 +305,10 @@ export class CameraService extends EventEmitter {
             }
 
             if (result === true) {
-                result = await this.configurePreview(defaultResolutionSel, defaultEncoderSel, defaultBitRateSel, defaultFrameRatesSel, 1);
+                result = await this.configureDisplayOut({
+                    ...this.videoSettings,
+                    displayOut: 1
+                });
             }
 
             if (result === true) {
@@ -259,69 +339,6 @@ export class CameraService extends EventEmitter {
             return false;
         }
     }
-
-    private async uninitializeCamera(): Promise<boolean> {
-        try {
-            let result = await this.ipcPostRequest('/overlay', { switchStatus: false });
-
-            if (result === true) {
-                result = await this.ipcPostRequest('/vam', { switchStatus: false, vamconfig: 'MD' });
-            }
-
-            if (result === true) {
-                result = await this.ipcPostRequest('/preview', { switchStatus: false });
-            }
-
-            return result;
-        }
-        catch (ex) {
-            this.logger.log(['CameraService', 'error'], `Failed during initSession: ${ex.message}`);
-
-            return false;
-        }
-    }
-
-    private async configurePreview(resolution: number, encoder: number, bitRate: number, frameRate: number, displayOut: number): Promise<boolean> {
-        const payload = {
-            resolutionSelectVal: (resolution < this.resolutions.length) ? resolution : defaultResolutionSel,
-            encodeModeSelectVal: (encoder < this.encoders.length) ? encoder : defaultEncoderSel,
-            bitRateSelectVal: (bitRate < this.bitRates.length) ? bitRate : defaultBitRateSel,
-            fpsSelectVal: (frameRate < this.frameRates.length) ? frameRate : defaultFrameRatesSel,
-            displayOut
-        };
-
-        try {
-            return this.ipcPostRequest('/video', payload);
-        }
-        catch (ex) {
-            this.logger.log(['CameraService', 'error'], ex.message);
-
-            return false;
-        }
-    }
-
-    private configureOverlay(type: string, text?: string): Promise<boolean> {
-        if (type === 'inference') {
-            return this.configureInferenceOverlay();
-        }
-        else if (type === 'text') {
-            return this.configureTextOverlay(text);
-        }
-
-        this.logger.log(['CameraService', 'error'], 'Invalid overlay type use (inference/text)');
-        return Promise.resolve(false);
-    }
-
-    // private async toggleOverlay(status): Promise<boolean> {
-    //     try {
-    //         return this.ipcPostRequest('/overlay', { switchStatus: status });
-    //     }
-    //     catch (ex) {
-    //         this.logger.log(['CameraService', 'error'], ex.message);
-
-    //         return false;
-    //     }
-    // }
 
     private async configureInferenceOverlay(): Promise<boolean> {
         const payload = {

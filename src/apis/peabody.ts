@@ -88,6 +88,42 @@ export class PeabodyRoutes extends RoutePlugin {
 
     @route({
         method: 'POST',
+        path: '/api/v1/peabody/video',
+        options: {
+            auth: {
+                strategies: ['peabody-jwt', 'peabody-localnetwork'],
+                access: {
+                    scope: ['api-client', 'admin']
+                }
+            },
+            tags: ['peabody'],
+            description: 'Configure video out settings (resolution, encoder, bitrate, fps)'
+        }
+    })
+    // @ts-ignore (request)
+    public async postVideo(request: Request, h: ResponseToolkit) {
+        try {
+            const payloadSettings = _get(request, 'payload');
+            const videoSettings = {
+                resolutionSelectVal: this.camera.currentResolutionSelectVal,
+                encodeModeSelectVal: this.camera.currentEncodeModeSelectVal,
+                bitRateSelectVal: this.camera.currentBitRateSelectVal,
+                fpsSelectVal: this.camera.currentFpsSelectVal,
+                displayOut: this.camera.currentDisplayOutVal,
+                ...payloadSettings
+            };
+
+            await this.camera.configureDisplayOut(videoSettings);
+
+            return h.response().code(201);
+        }
+        catch (ex) {
+            throw Boom.badRequest(ex.message);
+        }
+    }
+
+    @route({
+        method: 'POST',
         path: '/api/v1/peabody/preview',
         options: {
             auth: {
@@ -97,7 +133,7 @@ export class PeabodyRoutes extends RoutePlugin {
                 }
             },
             tags: ['peabody'],
-            description: 'Reset peabody system services (implied logout)'
+            description: 'Turn video preview (HDMI out) on/off'
         }
     })
     // @ts-ignore (request)
@@ -105,7 +141,92 @@ export class PeabodyRoutes extends RoutePlugin {
         try {
             const switchStatus = _get(request, 'payload.switchStatus');
 
-            await this.camera.togglePreview(switchStatus);
+            await this.camera.togglePreview(switchStatus || false);
+
+            return h.response().code(201);
+        }
+        catch (ex) {
+            throw Boom.badRequest(ex.message);
+        }
+    }
+
+    @route({
+        method: 'POST',
+        path: '/api/v1/peabody/vam',
+        options: {
+            auth: {
+                strategies: ['peabody-jwt', 'peabody-localnetwork'],
+                access: {
+                    scope: ['api-client', 'admin']
+                }
+            },
+            tags: ['peabody'],
+            description: 'Turn the inferencing engine (VAM) on/off'
+        }
+    })
+    // @ts-ignore (request)
+    public async postVam(request: Request, h: ResponseToolkit) {
+        try {
+            const switchStatus = _get(request, 'payload.switchStatus');
+
+            await this.camera.toggleVam(switchStatus || false);
+
+            return h.response().code(201);
+        }
+        catch (ex) {
+            throw Boom.badRequest(ex.message);
+        }
+    }
+
+    @route({
+        method: 'POST',
+        path: '/api/v1/peabody/overlay',
+        options: {
+            auth: {
+                strategies: ['peabody-jwt', 'peabody-localnetwork'],
+                access: {
+                    scope: ['api-client', 'admin']
+                }
+            },
+            tags: ['peabody'],
+            description: 'Turn inference overlay (ROI boxes) on/off'
+        }
+    })
+    // @ts-ignore (request)
+    public async postOverlay(request: Request, h: ResponseToolkit) {
+        try {
+            const switchStatus = _get(request, 'payload.switchStatus');
+
+            await this.camera.toggleOverlay(switchStatus || false);
+
+            return h.response().code(201);
+        }
+        catch (ex) {
+            throw Boom.badRequest(ex.message);
+        }
+    }
+
+    @route({
+        method: 'POST',
+        path: '/api/v1/peabody/overlayconfig',
+        options: {
+            auth: {
+                strategies: ['peabody-jwt', 'peabody-localnetwork'],
+                access: {
+                    scope: ['api-client', 'admin']
+                }
+            },
+            tags: ['peabody'],
+            description: 'Configure inference overlay type and text'
+        }
+    })
+    // @ts-ignore (request)
+    public async postOverlayConfig(request: Request, h: ResponseToolkit) {
+        try {
+            const overlayType = _get(request, 'payload.type') || 'inference';
+            const overlayText = _get(request, 'payload.text');
+
+            await this.camera.configureOverlay(overlayType, overlayText);
 
             return h.response().code(201);
         }
