@@ -1,55 +1,26 @@
 import { ConfigService } from '../services/config';
 import { LoggingService } from '../services/logging';
 import { service, inject } from '@sseiber/sprightly';
+import { Server } from 'hapi';
 import * as request from 'request';
 import { EventEmitter } from 'events';
 import * as _get from 'lodash.get';
 import { promisify } from 'util';
 import { exec } from 'child_process';
+import * as fse from 'fs-extra';
+import { join as pathJoin } from 'path';
+import { platform as osPlatform } from 'os';
 
 const defaultResolutionSel: number = 1;
 const defaultEncoderSel: number = 1;
 const defaultBitRateSel: number = 3;
 const defaultFrameRatesSel: number = 1;
 
-const peabodyConfiguration = {
-    resolutionSelectVal: 1,
-    resolution: [
-        '4K',
-        '1080P',
-        '720P',
-        '480P'
-    ],
-    encodeModeSelectVal: 1,
-    encodeMode: [
-        'HEVC/H.265',
-        'AVC/H.264'
-    ],
-    bitRateSelectVal: 3,
-    bitRate: [
-        '512Kbps',
-        '768Kbps',
-        '1Mbps',
-        '1.5Mbps',
-        '2Mbps',
-        '3Mbps',
-        '4Mbps',
-        '6Mbps',
-        '8Mbps',
-        '10Mbps',
-        '20Mbps'
-    ],
-    fpsSelectVal: 1,
-    fps: [
-        24,
-        30
-    ],
-    displayOut: 1,
-    status: true
-};
-
 @service('camera')
 export class CameraService extends EventEmitter {
+    @inject('$server')
+    private server: Server;
+
     @inject('config')
     private config: ConfigService;
 
@@ -85,34 +56,49 @@ export class CameraService extends EventEmitter {
     public async init() {
         this.logger.log(['CameraService', 'info'], 'initialize');
 
+        await this.login();
+    }
+
+    public async login(): Promise<boolean> {
         try {
+            if (this.sessionToken) {
+                await this.ipcPostRequest('/logout');
+            }
+
             this.ipAddress = this.config.get('ipAddress') || await this.getWlanIp();
 
-            let result = await this.login();
+            let result = await this.ipcLogin();
             if (result === true) {
-                result = await this.getConfiguration();
+                const response = await this.getConfiguration();
+                result = response.status;
             }
 
             if (result === true) {
                 result = await this.initializeCamera();
             }
+
+            if (result === false && this.sessionToken) {
+                this.logger.log(['CameraService', 'error'], `Error during initialization, logging out`);
+
+                await this.logout();
+            }
+
+            return result;
         }
         catch (ex) {
             this.logger.log(['CameraService', 'error'], ex.message);
-        }
-    }
 
-    public async login(): Promise<boolean> {
-        if (this.sessionToken) {
-            await this.ipcPostRequest('/logout');
+            return false;
         }
-
-        return this.ipcLogin();
     }
 
     public async logout(): Promise<boolean> {
         try {
-            return this.ipcPostRequest('/logout');
+            await this.ipcPostRequest('/logout');
+
+            this.sessionToken = '';
+
+            return true;
         }
         catch (ex) {
             this.logger.log(['CameraService', 'error'], ex.message);
@@ -122,66 +108,123 @@ export class CameraService extends EventEmitter {
     }
 
     public async getConfiguration(): Promise<any> {
-        // const response = JSON.parse(await this.ipcGetRequest('/video'));
-        const response = peabodyConfiguration;
+        try {
+            const response = JSON.parse(await this.ipcGetRequest('/video'));
 
-        // create a synthetic prop for hdmi preview on/off
-        // create a synthetic prop for vam engine on/off
-        // session id
-        // wireless ip
-        // rtsp video url
-        // rtsp vam url
-        // this needs to return the model files
-        // perhaps it needs to get the overlay config??
+            if (response.status === true) {
+                this.resolutions = [...response.resolution];
+                this.encoders = [...response.encodeMode];
+                this.bitRates = [...response.bitRate];
+                this.frameRates = [...response.fps];
 
-        if (response.status === true) {
-            this.resolutions = [...response.resolution];
-            this.encoders = [...response.encodeMode];
-            this.bitRates = [...response.bitRate];
-            this.frameRates = [...response.fps];
+                return {
+                    ...response,
+                    sessionToken: this.sessionToken,
+                    ipAddress: await this.getWlanIp(),
+                    rtspUrl: this.rtspUrl,
+                    vamUrl: this.vamUrl,
+                    modelFiles: await this.retrieveModelFiles()
+                };
+            }
 
-            return response;
+            return {
+                status: response.status
+            };
         }
+        catch (ex) {
+            this.logger.log(['CameraService', 'error'], ex.message);
 
-        return {
-            status: response.status
-        };
+            return {
+                status: false
+            };
+        }
     }
 
     public async resetCameraServices(): Promise<void> {
         try {
-            await promisify(exec)(`pkill /usr/bin/ipc-webserver`);
-            await promisify(exec)(`pkill /usr/bin/qmmf-server`);
+            if (osPlatform() === 'darwin') {
+                await promisify(exec)(`adb shell pkill /usr/bin/ipc-webserver`);
+                await promisify(exec)(`adb shell pkill /usr/bin/qmmf-server`);
+            }
+            else {
+                await promisify(exec)(`pkill /usr/bin/ipc-webserver`);
+                await promisify(exec)(`pkill /usr/bin/qmmf-server`);
+            }
 
-            await this.sleep(2000);
+            await this.sleep(5000);
         }
         catch (ex) {
             this.logger.log(['CameraService', 'error'], `Failed to reset system services: ${ex.message}`);
         }
     }
 
-    private async initializeCamera(): Promise<boolean> {
-        return true;
+    public async rebootCamera(): Promise<void> {
         try {
-            let result = await this.togglePreview(false);
+            if (osPlatform() === 'darwin') {
+                await promisify(exec)(`adb shell reboot`);
+            }
+            else {
+                await promisify(exec)(`reboot`);
+            }
+
+            await this.sleep(5000);
+        }
+        catch (ex) {
+            this.logger.log(['CameraService', 'error'], `Failed to reset system services: ${ex.message}`);
+        }
+    }
+
+    public async togglePreview(status: boolean): Promise<boolean> {
+        try {
+            let result = await this.uninitializeCamera();
+
+            if (result && status === true) {
+                result = await this.ipcPostRequest('/preview', { switchStatus: status });
+            }
+
+            return result;
+        }
+        catch (ex) {
+            this.logger.log(['CameraService', 'error'], ex.message);
+
+            return false;
+        }
+    }
+
+    public async toggleVam(status: boolean): Promise<boolean> {
+        const payload = {
+            switchStatus: status,
+            vamconfig: 'MD'
+        };
+
+        try {
+            return this.ipcPostRequest('/vam', payload);
+        }
+        catch (ex) {
+            this.logger.log(['CameraService', 'error'], ex.message);
+
+            return false;
+        }
+    }
+
+    private async initializeCamera(): Promise<boolean> {
+        try {
+            let result = await this.ipcPostRequest('/preview', { switchStatus: false });
 
             if (result === true) {
                 result = await this.configurePreview(defaultResolutionSel, defaultEncoderSel, defaultBitRateSel, defaultFrameRatesSel, 0);
             }
 
             if (result === true) {
-                result = await this.togglePreview(true);
+                result = await this.ipcPostRequest('/preview', { switchStatus: true });
             }
 
             if (result === true) {
-                const rtspUrl = await this.getRtspVideoUrl();
-                if (rtspUrl === '') {
-                    this.logger.log(['CameraService', 'error'], `Expected an rtsp video url but got an empty string`);
-                }
+                result = await this.getRtspVideoUrl();
             }
 
             if (result === true) {
-                result = await this.togglePreview(false);
+                result = await await this.ipcPostRequest('/preview', { switchStatus: false });
             }
 
             if (result === true) {
@@ -189,18 +232,15 @@ export class CameraService extends EventEmitter {
             }
 
             if (result === true) {
-                result = await this.togglePreview(true);
+                result = await await this.ipcPostRequest('/preview', { switchStatus: true });
             }
 
             if (result === true) {
-                result = await this.toggleVam(true);
+                result = await this.ipcPostRequest('/vam', { switchStatus: true, vamconfig: 'MD' });
             }
 
             if (result === true) {
-                const vamUrl = await this.getRtspVamUrl();
-                if (vamUrl === '') {
-                    this.logger.log(['CameraService', 'error'], `Expected a VAM data url but got an empty string`);
-                }
+                result = await this.getRtspVamUrl();
             }
 
             if (result === true) {
@@ -208,7 +248,28 @@ export class CameraService extends EventEmitter {
             }
 
             if (result === true) {
-                result = await this.toggleOverlay(true);
+                result = await this.ipcPostRequest('/overlay', { switchStatus: true });
+            }
+
+            return result;
+        }
+        catch (ex) {
+            this.logger.log(['CameraService', 'error'], `Failed during initSession: ${ex.message}`);
+
+            return false;
+        }
+    }
+
+    private async uninitializeCamera(): Promise<boolean> {
+        try {
+            let result = await this.ipcPostRequest('/overlay', { switchStatus: false });
+
+            if (result === true) {
+                result = await this.ipcPostRequest('/vam', { switchStatus: false, vamconfig: 'MD' });
+            }
+
+            if (result === true) {
+                result = await this.ipcPostRequest('/preview', { switchStatus: false });
             }
 
             return result;
@@ -239,37 +300,6 @@ export class CameraService extends EventEmitter {
         }
     }
 
-    private async togglePreview(status: boolean): Promise<boolean> {
-        const payload = {
-            switchStatus: status
-        };
-
-        try {
-            return this.ipcPostRequest('/preview', payload);
-        }
-        catch (ex) {
-            this.logger.log(['CameraService', 'error'], ex.message);
-
-            return false;
-        }
-    }
-
-    private async toggleVam(status): Promise<boolean> {
-        const payload = {
-            switchStatus: status,
-            vamconfig: 'MD'
-        };
-
-        try {
-            return this.ipcPostRequest('/vam', payload);
-        }
-        catch (ex) {
-            this.logger.log(['CameraService', 'error'], ex.message);
-
-            return false;
-        }
-    }
-
     private configureOverlay(type: string, text?: string): Promise<boolean> {
         if (type === 'inference') {
             return this.configureInferenceOverlay();
@@ -282,20 +312,16 @@ export class CameraService extends EventEmitter {
         return Promise.resolve(false);
     }
 
-    private async toggleOverlay(status): Promise<boolean> {
-        const payload = {
-            switchStatus: status
-        };
+    // private async toggleOverlay(status): Promise<boolean> {
+    //     try {
+    //         return this.ipcPostRequest('/overlay', { switchStatus: status });
+    //     }
+    //     catch (ex) {
+    //         this.logger.log(['CameraService', 'error'], ex.message);
 
-        try {
-            return this.ipcPostRequest('/overlay', payload);
-        }
-        catch (ex) {
-            this.logger.log(['CameraService', 'error'], ex.message);
-
-            return false;
-        }
-    }
+    //         return false;
+    //     }
+    // }
 
     private async configureInferenceOverlay(): Promise<boolean> {
         const payload = {
@@ -341,33 +367,33 @@ export class CameraService extends EventEmitter {
         }
     }
 
-    private async getRtspVamUrl(): Promise<string> {
+    private async getRtspVamUrl(): Promise<boolean> {
         try {
             const response = JSON.parse(await this.ipcGetRequest('/vam'));
 
             this.vamUrl = response.url || '';
 
-            return this.vamUrl;
+            return response.status;
         }
         catch (ex) {
             this.logger.log(['CameraService', 'error'], ex.message);
 
-            return '';
+            return false;
         }
     }
 
-    private async getRtspVideoUrl(): Promise<string> {
+    private async getRtspVideoUrl(): Promise<boolean> {
         try {
             const response = JSON.parse(await this.ipcGetRequest('/preview'));
 
             this.rtspUrl = response.url || '';
 
-            return this.rtspUrl;
+            return response.status;
         }
         catch (ex) {
             this.logger.log(['CameraService', 'error'], ex.message);
 
-            return '';
+            return false;
         }
     }
 
@@ -487,5 +513,10 @@ export class CameraService extends EventEmitter {
         const { stdout } = await promisify(exec)(ifConfigFilter, { encoding: 'utf8' });
 
         return (stdout || '127.0.0.1').trim();
+    }
+
+    private async retrieveModelFiles() {
+        const storageDirectory = pathJoin((this.server.settings.app as any).peabodyDirectory, 'peabody', 'camera');
+        return fse.readdir(storageDirectory);
     }
 }

@@ -2,6 +2,7 @@ import { inject, RoutePlugin, route } from '@sseiber/sprightly';
 import { Request, ResponseToolkit } from 'hapi';
 import { CameraService } from '../services/camera';
 import * as Boom from 'boom';
+import * as _get from 'lodash.get';
 
 export class PeabodyRoutes extends RoutePlugin {
     @inject('camera')
@@ -48,7 +49,7 @@ export class PeabodyRoutes extends RoutePlugin {
         }
     })
     // @ts-ignore (request)
-    public async postLogin(request: Request, h: ResponseToolkit) {
+    public async postLogout(request: Request, h: ResponseToolkit) {
         try {
             await this.camera.logout();
 
@@ -76,7 +77,35 @@ export class PeabodyRoutes extends RoutePlugin {
     // @ts-ignore (request)
     public async postReset(request: Request, h: ResponseToolkit) {
         try {
-            await this.camera.reset();
+            await this.camera.resetCameraServices();
+
+            return h.response().code(201);
+        }
+        catch (ex) {
+            throw Boom.badRequest(ex.message);
+        }
+    }
+
+    @route({
+        method: 'POST',
+        path: '/api/v1/peabody/preview',
+        options: {
+            auth: {
+                strategies: ['peabody-jwt', 'peabody-localnetwork'],
+                access: {
+                    scope: ['api-client', 'admin']
+                }
+            },
+            tags: ['peabody'],
+            description: 'Reset peabody system services (implied logout)'
+        }
+    })
+    // @ts-ignore (request)
+    public async postPreview(request: Request, h: ResponseToolkit) {
+        try {
+            const switchStatus = _get(request, 'payload.switchStatus');
+
+            await this.camera.togglePreview(switchStatus);
 
             return h.response().code(201);
         }

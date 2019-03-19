@@ -42,15 +42,6 @@ export class StateService {
         return this.stateInternal.setupToken || '';
     }
 
-    public async setConfiguration(configOptions: any) {
-        const setStateError = 1;
-        if (setStateError) {
-            throw setStateError;
-        }
-
-        await this.flushState();
-    }
-
     private async loadState() {
         this.stateInternal = await this.storage.get(this.stateFile);
         this.stateInternal.editContext = Date.now();

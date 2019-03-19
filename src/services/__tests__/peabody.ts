@@ -1,6 +1,6 @@
-import { PeabodyService } from '../peabody';
+import { CameraService } from '../camera';
 
 it('should be constructed', () => {
-    const testInstance = new PeabodyService();
+    const testInstance = new CameraService();
     expect(testInstance).toBeDefined();
 });
