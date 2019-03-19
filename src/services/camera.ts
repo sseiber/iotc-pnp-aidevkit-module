@@ -86,11 +86,14 @@ export class CameraService extends EventEmitter {
     public async login(): Promise<boolean> {
         try {
             if (this.sessionToken) {
+                this.logger.log(['CameraService', 'info'], `Logging out of existing session (${this.sessionToken})`);
+
                 await this.ipcPostRequest('/logout');
             }
 
             this.ipAddress = this.config.get('ipAddress') || await this.getWlanIp();
 
+            this.logger.log(['CameraService', 'info'], `Logging into new session`);
             let result = await this.ipcLogin();
             if (result === true) {
                 const response = await this.getConfiguration();
@@ -133,6 +136,7 @@ export class CameraService extends EventEmitter {
 
     public async getConfiguration(): Promise<any> {
         try {
+            this.logger.log(['CameraService', 'info'], `Getting video configuration`);
             const response = JSON.parse(await this.ipcGetRequest('/video'));
 
             if (response.status === true) {
@@ -250,7 +254,7 @@ export class CameraService extends EventEmitter {
             encodeModeSelectVal: (videoSettings.encodeModeSelectVal < this.encoders.length) ? videoSettings.encodeModeSelectVal : this.videoSettings.encodeModeSelectVal,
             bitRateSelectVal: (videoSettings.bitRateSelectVal < this.bitRates.length) ? videoSettings.bitRateSelectVal : this.videoSettings.bitRateSelectVal,
             fpsSelectVal: (videoSettings.fpsSelectVal < this.frameRates.length) ? videoSettings.fpsSelectVal : this.videoSettings.fpsSelectVal,
-            displayOut: this.videoSettings.displayOut
+            displayOut: videoSettings.displayOut
         };
 
         try {
@@ -282,52 +286,80 @@ export class CameraService extends EventEmitter {
     }
 
     private async initializeCamera(): Promise<boolean> {
+        this.logger.log(['CameraService', 'info'], `Starting camera initial configuration`);
+
         try {
+            this.logger.log(['CameraService', 'info'], `Turning off preview`);
+
             let result = await this.ipcPostRequest('/preview', { switchStatus: false });
 
             if (result === true) {
-                result = await this.configureDisplayOut({
+                const videoSettings = {
                     ...this.videoSettings,
                     displayOut: 0
-                });
+                };
+
+                this.logger.log(['CameraService', 'info'], `Setting video configuration: ${JSON.stringify(videoSettings)}`);
+
+                result = await this.configureDisplayOut(videoSettings);
             }
 
             if (result === true) {
+                this.logger.log(['CameraService', 'info'], `Turning on preview`);
+
                 result = await this.ipcPostRequest('/preview', { switchStatus: true });
             }
 
             if (result === true) {
+                this.logger.log(['CameraService', 'info'], `Retrieving RTSP video url`);
+
                 result = await this.getRtspVideoUrl();
             }
 
             if (result === true) {
+                this.logger.log(['CameraService', 'info'], `Turning off preview`);
+
                 result = await await this.ipcPostRequest('/preview', { switchStatus: false });
             }
 
             if (result === true) {
-                result = await this.configureDisplayOut({
+                const videoSettings = {
                     ...this.videoSettings,
                     displayOut: 1
-                });
+                };
+
+                this.logger.log(['CameraService', 'info'], `Setting video configuration: ${JSON.stringify(videoSettings)}`);
+
+                result = await this.configureDisplayOut(videoSettings);
             }
 
             if (result === true) {
+                this.logger.log(['CameraService', 'info'], `Turning on preview`);
+
                 result = await await this.ipcPostRequest('/preview', { switchStatus: true });
             }
 
             if (result === true) {
+                this.logger.log(['CameraService', 'info'], `Turning on VAM`);
+
                 result = await this.ipcPostRequest('/vam', { switchStatus: true, vamconfig: 'MD' });
             }
 
             if (result === true) {
+                this.logger.log(['CameraService', 'info'], `Retrieving RTSP VAM url`);
+
                 result = await this.getRtspVamUrl();
             }
 
             if (result === true) {
+                this.logger.log(['CameraService', 'info'], `Configuring inference overlay`);
+
                 result = await this.configureOverlay('inference');
             }
 
             if (result === true) {
+                this.logger.log(['CameraService', 'info'], `Turning on inference overlay`);
+
                 result = await this.ipcPostRequest('/overlay', { switchStatus: true });
             }
 
@@ -386,11 +418,12 @@ export class CameraService extends EventEmitter {
 
     private async getRtspVamUrl(): Promise<boolean> {
         try {
-            const response = JSON.parse(await this.ipcGetRequest('/vam'));
+            const response = await this.ipcGetRequest('/vam');
+            const result = JSON.parse(response);
 
-            this.vamUrl = response.url || '';
+            this.vamUrl = result.url || '';
 
-            return response.status;
+            return result.status;
         }
         catch (ex) {
             this.logger.log(['CameraService', 'error'], ex.message);
@@ -401,11 +434,12 @@ export class CameraService extends EventEmitter {
 
     private async getRtspVideoUrl(): Promise<boolean> {
         try {
-            const response = JSON.parse(await this.ipcGetRequest('/preview'));
+            const response = await this.ipcGetRequest('/preview');
+            const result = JSON.parse(response);
 
-            this.rtspUrl = response.url || '';
+            this.rtspUrl = result.url || '';
 
-            return response.status;
+            return result.status;
         }
         catch (ex) {
             this.logger.log(['CameraService', 'error'], ex.message);
@@ -477,7 +511,7 @@ export class CameraService extends EventEmitter {
                 });
             }
 
-            this.logger.log(['ipcProvider', 'info'], `${method} API: ${options.url}`);
+            // this.logger.log(['ipcProvider', 'info'], `${method} API: ${options.url}`);
 
             const result = await this.makeRequest(options);
 
@@ -485,7 +519,9 @@ export class CameraService extends EventEmitter {
 
             this.logger.log(['ipcProvider', 'info'], `RESPONSE: ${JSON.stringify(_get(result, 'body'))}`);
 
-            return (method === 'POST') ? _get(result, 'body.status') : _get(result, 'body');
+            const bodyResult = (method === 'POST') ? _get(result, 'body.status') : _get(result, 'body');
+
+            return bodyResult;
         }
         catch (ex) {
             this.logger.log(['ipcProvider', 'error'], ex.message);

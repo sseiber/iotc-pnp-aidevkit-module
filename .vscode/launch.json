@@ -24,7 +24,7 @@
             "env": {
                 "NODE_ENV": "local",
                 "PORT": "9010",
-                "PEABODY_STORAGE": "${workspaceFolder}"
+                "PEABODY_STORAGE": "${workspaceFolder}/peabody"
             }
         }
     ]
