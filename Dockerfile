@@ -5,7 +5,8 @@ RUN apt-get update && apt-get install -y \
     gstreamer1.0-plugins-base \
     gstreamer1.0-plugins-good \
     gstreamer1.0-libav \
-    gstreamer1.0-tools
+    gstreamer1.0-tools \
+    rm -rf /var/lib/apt/lists/*
 
 ENV WORKINGDIR /app
 WORKDIR ${WORKINGDIR}
@@ -14,7 +15,6 @@ ADD package.json ${WORKINGDIR}/package.json
 ADD tslint.json ${WORKINGDIR}/tslint.json
 ADD tsconfig.json ${WORKINGDIR}/tsconfig.json
 ADD src ${WORKINGDIR}/src
-ADD client_dist ${WORKINGDIR}/client_dist
 ADD .npmrc ${WORKINGDIR}/.npmrc
 
 RUN npm install -q && \
