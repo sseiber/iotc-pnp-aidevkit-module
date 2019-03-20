@@ -15,6 +15,7 @@ const defaultresolutionSelectVal: number = 1;
 const defaultencodeModeSelectVal: number = 1;
 const defaultbitRateSelectVal: number = 3;
 const defaultfpsSelectVal: number = 1;
+const defaultMaxLoginAttempts: number = 3;
 
 @service('camera')
 export class CameraService extends EventEmitter {
@@ -27,6 +28,7 @@ export class CameraService extends EventEmitter {
     @inject('logger')
     private logger: LoggingService;
 
+    private maxLoginAttempts: number = defaultMaxLoginAttempts;
     private ipAddress: string = '';
     private sessionToken: string = '';
     private port: string = '1080';
@@ -64,8 +66,10 @@ export class CameraService extends EventEmitter {
         return this.videoSettings.displayOut;
     }
 
-    public async init() {
+    public async init(): Promise<void> {
         this.logger.log(['CameraService', 'info'], 'initialize');
+
+        this.maxLoginAttempts = this.config.get('maxLoginAttemps') || defaultMaxLoginAttempts;
 
         // ###
         // ### This requires a side service running in the the host
@@ -84,17 +88,21 @@ export class CameraService extends EventEmitter {
     }
 
     public async login(): Promise<boolean> {
+        let result = false;
+
         try {
             if (this.sessionToken) {
                 this.logger.log(['CameraService', 'info'], `Logging out of existing session (${this.sessionToken})`);
 
-                await this.ipcPostRequest('/logout');
+                await this.logout();
             }
 
-            this.ipAddress = this.config.get('ipAddress') || await this.getWlanIp();
+            this.ipAddress = await this.getWlanIp();
 
             this.logger.log(['CameraService', 'info'], `Logging into new session`);
-            let result = await this.ipcLogin();
+
+            result = await this.ipcLogin();
+
             if (result === true) {
                 const response = await this.getConfiguration();
                 result = response.status;
@@ -103,34 +111,45 @@ export class CameraService extends EventEmitter {
             if (result === true) {
                 result = await this.initializeCamera();
             }
-
+        }
+        catch (ex) {
+            this.logger.log(['CameraService', 'error'], ex.message);
+        }
+        finally {
             if (result === false && this.sessionToken) {
                 this.logger.log(['CameraService', 'error'], `Error during initialization, logging out`);
 
                 await this.logout();
             }
+        }
+
+        return result;
+    }
+
+    public async logout(): Promise<boolean> {
+        let result = false;
+
+        try {
+            for (let iLogoutAttempts = 0; result === false && iLogoutAttempts < 3; ++iLogoutAttempts) {
+                try {
+                    result = await this.ipcPostRequest('/logout');
+                    break;
+                }
+                catch (ex) {
+                    if (ex.code !== 'ESOCKETTIMEDOUT') {
+                        throw new Error(ex);
+                    }
+                }
+            }
+
+            this.sessionToken = '';
 
             return result;
         }
         catch (ex) {
             this.logger.log(['CameraService', 'error'], ex.message);
 
-            return false;
-        }
-    }
-
-    public async logout(): Promise<boolean> {
-        try {
-            await this.ipcPostRequest('/logout');
-
-            this.sessionToken = '';
-
-            return true;
-        }
-        catch (ex) {
-            this.logger.log(['CameraService', 'error'], ex.message);
-
-            return false;
+            return result;
         }
     }
 
@@ -462,17 +481,40 @@ export class CameraService extends EventEmitter {
 
             this.logger.log(['ipcProvider', 'info'], `LOGIN API: ${options.url}`);
 
-            const result = await this.makeRequest(options);
+            let result = {
+                body: {
+                    status: false
+                }
+            };
 
-            this.logger.log(['ipcProvider', 'info'], `RESPONSE BODY: ${_get(result, 'body.status')}`);
+            for (let iLoginAttempts = 0; !_get(result, 'body.status') && iLoginAttempts < this.maxLoginAttempts; ++iLoginAttempts) {
+                try {
+                    if (iLoginAttempts > 0) {
+                        this.logger.log(['ipcProvider', 'warn'], `LOGIN ATTEMPT ${iLoginAttempts + 1} of ${this.maxLoginAttempts}: ${options.url}`);
+                    }
 
-            if (result.body.status === true) {
+                    result = await this.makeRequest(options);
+                }
+                catch (ex) {
+                    if (ex.code !== 'ETIMEDOUT') {
+                        throw new Error(ex);
+                    }
+                }
+            }
+
+            const status = _get(result, 'body.status');
+            this.logger.log(['ipcProvider', 'info'], `RESPONSE BODY: ${status}`);
+
+            if (status === true) {
                 this.logger.log(['ipcProvider', 'info'], `RESPONSE COOKIE: ${_get(result, 'response.headers[set-cookie][0]')}`);
 
                 this.sessionToken = _get(result, 'response.headers[set-cookie][0]');
             }
+            else {
+                this.logger.log(['ipcProvider', 'info'], `Error durring logon`);
+            }
 
-            return _get(result, 'body.status');
+            return status;
         }
         catch (ex) {
             this.logger.log(['ipcProvider', 'error'], ex.message);
@@ -489,7 +531,7 @@ export class CameraService extends EventEmitter {
         return this.ipcRequest('POST', path, params, payload);
     }
 
-    private async ipcRequest(method: string, path: string, params: string, payload?: any): Promise<any> {
+    private async ipcRequest(method: string, path: string, payload?: any, params?: string): Promise<any> {
         if (!this.sessionToken) {
             throw new Error('No valid login session available');
         }
@@ -532,7 +574,10 @@ export class CameraService extends EventEmitter {
 
     private async makeRequest(options): Promise<any> {
         return new Promise((resolve, reject) => {
-            request(options, (requestError, response, body) => {
+            request({
+                timeout: 5000,
+                ...options
+            }, (requestError, response, body) => {
                 if (requestError) {
                     this.logger.log(['ipcProvider', 'error'], `makeRequest: ${requestError.message}`);
                     return reject(requestError);
@@ -562,6 +607,11 @@ export class CameraService extends EventEmitter {
     }
 
     private async getWlanIp() {
+        const ipAddress = this.config.get('ipAddress');
+        if (ipAddress) {
+            return ipAddress;
+        }
+
         const ifConfigFilter = `ip addr show wlan0 | grep 'inet ' | awk '{print $2}' | cut -f1 -d'/'`;
         const { stdout } = await promisify(exec)(ifConfigFilter, { encoding: 'utf8' });
 
