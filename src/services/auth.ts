@@ -36,7 +36,7 @@ export class AuthService {
 
         this.issuerInternal = this.state.systemId;
         if (!this.issuerInternal) {
-            throw new Error('No peabody id defined');
+            throw new Error('No system id defined');
         }
 
         const secret = await this.storage.get('auth', 'secret');
@@ -89,11 +89,18 @@ export class AuthService {
     }
 
     private async setup() {
-        const secret = await this.generateSecret();
+        try {
+            const secret = await this.generateSecret();
 
-        await this.storage.set('auth', 'secret', secret);
+            await this.storage.set('auth', 'secret', secret);
 
-        this.secretInternal = Buffer.from(secret, 'base64');
+            this.secretInternal = Buffer.from(secret, 'base64');
+        }
+        catch (ex) {
+            this.logger.log(['AuthService', 'error'], ex.message);
+
+            // eat exceptions
+        }
 
         return;
     }

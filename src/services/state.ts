@@ -3,6 +3,7 @@ import { LoggingService } from './logging';
 import { ConfigService } from './config';
 import { StorageService } from './storage';
 import * as _get from 'lodash.get';
+import { v4 as uuidV4 } from 'uuid';
 
 @service('state')
 export class StateService {
@@ -28,6 +29,16 @@ export class StateService {
         this.stateFile = this.config.get('systemName') ? `${this.config.get('systemName')}-state` : 'state';
 
         await this.loadState();
+
+        if (!this.systemName) {
+            this.stateInternal.registration.systemName = uuidV4();
+        }
+
+        if (!this.systemId) {
+            this.stateInternal.registration.systemId = uuidV4();
+        }
+
+        await this.flushState();
     }
 
     public get systemName(): string {
@@ -38,23 +49,33 @@ export class StateService {
         return this.stateInternal.registration.systemId;
     }
 
-    public get setupToken(): string {
-        return this.stateInternal.setupToken || '';
-    }
-
     private async loadState() {
-        this.stateInternal = await this.storage.get(this.stateFile);
-        this.stateInternal.editContext = Date.now();
+        try {
+            this.stateInternal = await this.storage.get(this.stateFile);
+            if (!this.stateInternal) {
+                this.stateInternal = {
+                    registration: {
+                        systemName: '',
+                        systemId: ''
+                    }
+                };
+            }
 
-        await this.flushState();
+            await this.flushState();
+        }
+        catch (ex) {
+            this.logger.log(['flushState', 'error'], ex.message);
+
+            // eat exeptions
+        }
     }
 
     private async flushState() {
         try {
             await this.storage.flush(this.stateFile, this.stateInternal as any);
         }
-        catch (error) {
-            this.logger.log(['flushState', 'error'], error.message);
+        catch (ex) {
+            this.logger.log(['flushState', 'error'], ex.message);
 
             // eat exeptions
         }

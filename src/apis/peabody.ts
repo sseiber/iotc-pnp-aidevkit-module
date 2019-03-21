@@ -25,9 +25,9 @@ export class PeabodyRoutes extends RoutePlugin {
     // @ts-ignore (request)
     public async postLogin(request: Request, h: ResponseToolkit) {
         try {
-            await this.camera.login();
+            const result = await this.camera.login();
 
-            return h.response().code(201);
+            return h.response(result).code(201);
         }
         catch (ex) {
             throw Boom.badRequest(ex.message);
@@ -51,35 +51,9 @@ export class PeabodyRoutes extends RoutePlugin {
     // @ts-ignore (request)
     public async postLogout(request: Request, h: ResponseToolkit) {
         try {
-            await this.camera.logout();
+            const result = await this.camera.logout();
 
-            return h.response().code(201);
-        }
-        catch (ex) {
-            throw Boom.badRequest(ex.message);
-        }
-    }
-
-    @route({
-        method: 'POST',
-        path: '/api/v1/peabody/reset',
-        options: {
-            auth: {
-                strategies: ['peabody-jwt', 'peabody-localnetwork'],
-                access: {
-                    scope: ['api-client', 'admin']
-                }
-            },
-            tags: ['peabody'],
-            description: 'Reset peabody system services (implied logout)'
-        }
-    })
-    // @ts-ignore (request)
-    public async postReset(request: Request, h: ResponseToolkit) {
-        try {
-            await this.camera.resetCameraServices();
-
-            return h.response().code(201);
+            return h.response(result).code(201);
         }
         catch (ex) {
             throw Boom.badRequest(ex.message);
@@ -141,9 +115,9 @@ export class PeabodyRoutes extends RoutePlugin {
         try {
             const switchStatus = _get(request, 'payload.switchStatus');
 
-            await this.camera.togglePreview(switchStatus || false);
+            const result = await this.camera.togglePreview(switchStatus || false);
 
-            return h.response().code(201);
+            return h.response(result).code(201);
         }
         catch (ex) {
             throw Boom.badRequest(ex.message);

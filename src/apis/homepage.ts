@@ -26,6 +26,21 @@ export class HomePageRoutes extends RoutePlugin {
 
     @route({
         method: 'GET',
+        path: '/peabody/{path*}',
+        options: {
+            tags: ['homepage'],
+            description: 'The homepage spa'
+        }
+    })
+    // @ts-ignore (request)
+    public async getHomePage(request: Request, h: ResponseToolkit) {
+        const homePageView = pathResolve(rootDirectory, 'client_dist', 'index.html');
+
+        return h.file(homePageView);
+    }
+
+    @route({
+        method: 'GET',
         path: '/favicon.ico',
         options: {
             tags: ['homepage'],

@@ -28,7 +28,7 @@ export class StorageService {
         this.setup();
     }
 
-    public async get(scope: string, property?: string) {
+    public async get(scope: string, property?: string): Promise<any> {
         if (!property) {
             property = ROOT;
         }

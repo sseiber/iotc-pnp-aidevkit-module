@@ -1,21 +1,23 @@
-import { ConfigService } from '../services/config';
-import { LoggingService } from '../services/logging';
 import { service, inject } from '@sseiber/sprightly';
 import { Server } from 'hapi';
 import * as request from 'request';
 import { EventEmitter } from 'events';
 import * as _get from 'lodash.get';
 import { promisify } from 'util';
-import { exec, execFile } from 'child_process';
+import { exec } from 'child_process';
 import * as fse from 'fs-extra';
 import { join as pathJoin } from 'path';
-import { platform as osPlatform } from 'os';
+import { ConfigService } from './config';
+import { LoggingService } from './logging';
+import { CameraResult } from './peabodyTypes';
 
 const defaultresolutionSelectVal: number = 1;
 const defaultencodeModeSelectVal: number = 1;
 const defaultbitRateSelectVal: number = 3;
 const defaultfpsSelectVal: number = 1;
 const defaultMaxLoginAttempts: number = 3;
+const defaultDeviceName: string = 'Peabody';
+const defaultRtspVideoPort: string = '8900';
 
 @service('camera')
 export class CameraService extends EventEmitter {
@@ -28,11 +30,12 @@ export class CameraService extends EventEmitter {
     @inject('logger')
     private logger: LoggingService;
 
+    private deviceName: string = defaultDeviceName;
     private maxLoginAttempts: number = defaultMaxLoginAttempts;
+    private rtspVideoPort: string = defaultRtspVideoPort;
     private ipAddress: string = '';
     private sessionToken: string = '';
     private port: string = '1080';
-    private rtspUrl: string = '';
     private vamUrl: string = '';
     private resolutions: string[] = [];
     private encoders: string[] = [];
@@ -70,25 +73,19 @@ export class CameraService extends EventEmitter {
         this.logger.log(['CameraService', 'info'], 'initialize');
 
         this.maxLoginAttempts = this.config.get('maxLoginAttemps') || defaultMaxLoginAttempts;
+        this.deviceName = this.config.get('deviceName') || defaultDeviceName;
+        this.rtspVideoPort = this.config.get('rtspVideoPort') || defaultRtspVideoPort;
 
         // ###
-        // ### This requires a side service running in the the host
+        // ### Need a way to reset services when a new image is deployed
         // ###
-        // // This is a bit harsh, but if the image gets applied in the middle of an
-        // // existing session (e.g. IoT Edge deployment decides to update the image)
-        // // then we can't make any assumptions about the existing running system.
-        // // Until another more elegant approach gets figured out initialization of this
-        // // image will forcefully take down:
-        // //   - /usr/bin/ipc-webserver
-        // //   - /usr/bin/qmmf-server
-        // // then wait 10seconds for things to settle down before attempting a new login.
 
         // await this.resetCameraServices();
         await this.login();
     }
 
-    public async login(): Promise<boolean> {
-        let result = false;
+    public async login(): Promise<CameraResult> {
+        let status = false;
 
         try {
             if (this.sessionToken) {
@@ -101,38 +98,42 @@ export class CameraService extends EventEmitter {
 
             this.logger.log(['CameraService', 'info'], `Logging into new session`);
 
-            result = await this.ipcLogin();
+            status = await this.ipcLogin();
 
-            if (result === true) {
-                const response = await this.getConfiguration();
-                result = response.status;
+            if (status === true) {
+                status = await this.initializeCamera();
             }
 
-            if (result === true) {
-                result = await this.initializeCamera();
+            if (status === true) {
+                const response = await this.getConfiguration();
+                status = response.status;
             }
         }
         catch (ex) {
             this.logger.log(['CameraService', 'error'], ex.message);
         }
         finally {
-            if (result === false && this.sessionToken) {
+            if (status === false && this.sessionToken) {
                 this.logger.log(['CameraService', 'error'], `Error during initialization, logging out`);
 
                 await this.logout();
             }
         }
 
-        return result;
+        return new CameraResult(
+            status,
+            'Login error',
+            status ? 'Succeeded' : `An error occurred while trying to log into the ${this.deviceName} device. Try rebooting the device and login again.`
+        );
     }
 
-    public async logout(): Promise<boolean> {
-        let result = false;
+    public async logout(): Promise<CameraResult> {
+        let status = false;
 
         try {
-            for (let iLogoutAttempts = 0; result === false && iLogoutAttempts < 3; ++iLogoutAttempts) {
+            for (let iLogoutAttempts = 0; status === false && iLogoutAttempts < 3; ++iLogoutAttempts) {
                 try {
-                    result = await this.ipcPostRequest('/logout');
+                    status = await this.ipcPostRequest('/logout', {});
                     break;
                 }
                 catch (ex) {
@@ -144,21 +145,30 @@ export class CameraService extends EventEmitter {
 
             this.sessionToken = '';
 
-            return result;
+            status = true;
         }
         catch (ex) {
             this.logger.log(['CameraService', 'error'], ex.message);
 
-            return result;
+            status = false;
         }
+
+        return new CameraResult(
+            status,
+            'Logoff error',
+            status ? 'Succeeded' : `The attempt to log out of the ${this.deviceName} device didn't complete successfully. Try rebooting the device and login again.`
+        );
     }
 
     public async getConfiguration(): Promise<any> {
+        let status = false;
+
         try {
             this.logger.log(['CameraService', 'info'], `Getting video configuration`);
             const response = JSON.parse(await this.ipcGetRequest('/video'));
+            status = response.status;
 
-            if (response.status === true) {
+            if (status === true) {
                 this.videoSettings.resolutionSelectVal = response.resolutionSelectVal;
                 this.resolutions = [...response.resolution];
                 this.videoSettings.encodeModeSelectVal = response.encodeModeSelectVal;
@@ -170,84 +180,62 @@ export class CameraService extends EventEmitter {
                 this.videoSettings.displayOut = response.displayOut;
 
                 return {
-                    ...response,
+                    status: response.status,
                     sessionToken: this.sessionToken,
                     ipAddress: await this.getWlanIp(),
-                    rtspUrl: this.rtspUrl,
+                    rtspUrl: `rtsp://${this.ipAddress}:${this.rtspVideoPort}/live`,
                     vamUrl: this.vamUrl,
+                    resolution: this.resolutions[this.videoSettings.resolutionSelectVal],
+                    resolutions: [ ...this.resolutions ],
+                    encoder: this.encoders[this.videoSettings.encodeModeSelectVal],
+                    encoders: [ ...this.encoders ],
+                    bitRate: this.bitRates[this.videoSettings.bitRateSelectVal],
+                    bitRates: [ ...this.bitRates ],
+                    frameRate: this.frameRates[this.videoSettings.fpsSelectVal],
+                    frameRates: [ ...this.frameRates ],
                     modelFiles: await this.retrieveModelFiles()
                 };
             }
-
-            return {
-                status: response.status
-            };
         }
         catch (ex) {
             this.logger.log(['CameraService', 'error'], ex.message);
 
-            return {
-                status: false
-            };
+            status = false;
         }
+
+        return new CameraResult(
+            status,
+            'Camera error',
+            status ? 'Succeeded' : `An error occurred while trying to get configuration settings from the ${this.deviceName} device.`
+        );
     }
 
     public async resetCameraServices(): Promise<void> {
-        try {
-            if (osPlatform() === 'darwin') {
-                await promisify(execFile)(`adb`, `shell pkill -9 ipc-webserver`.split(' '));
-                await promisify(execFile)(`adb`, `shell pkill -9 qmmf-server`.split(' '));
-            }
-            else {
-                // ###
-                // ### This requires a side service running in the the host
-                // ###
-                await promisify(execFile)(`pkill`, `-9 ipc-webserver`.split(' '));
-                await promisify(execFile)(`pkill`, `-9 qmmf-server`.split(' '));
-            }
-
-            await this.sleep(10000);
-        }
-        catch (ex) {
-            this.logger.log(['CameraService', 'error'], `Failed to reset system services: ${ex.message}`);
-        }
+        return;
     }
 
-    public async rebootCamera(): Promise<void> {
-        try {
-            if (osPlatform() === 'darwin') {
-                await promisify(execFile)(`adb`, `shell reboot`.split(' '));
-            }
-            else {
-                // ###
-                // ### This requires a side service running in the the host
-                // ###
-                await promisify(execFile)(`reboot`);
-            }
+    public async togglePreview(switchStatus: boolean): Promise<CameraResult> {
+        let status;
 
-            // The camera is about to shutdown - this wait is just to keep
-            // anything else from attempting to happen while shutdown proceeds
-            await this.sleep(5000);
-        }
-        catch (ex) {
-            this.logger.log(['CameraService', 'error'], `Failed to reset system services: ${ex.message}`);
-        }
-    }
-
-    public async togglePreview(status: boolean): Promise<boolean> {
         try {
-            return this.ipcPostRequest('/preview', { switchStatus: status });
+            status = await this.ipcPostRequest('/preview', { switchStatus });
         }
         catch (ex) {
             this.logger.log(['CameraService', 'error'], ex.message);
 
-            return false;
+            status = false;
         }
+
+        return new CameraResult(
+            status,
+            'Camera error',
+            status ? 'Succeeded' : `The attempt to switch ${status ? 'on' : 'off'} the video output didn't complete successfully.`
+        );
     }
 
-    public async toggleVam(status: boolean): Promise<boolean> {
+    public async toggleVam(switchStatus: boolean): Promise<boolean> {
         try {
-            return this.ipcPostRequest('/vam', { switchStatus: status, vamconfig: 'MD' });
+            return this.ipcPostRequest('/vam', { switchStatus, vamconfig: 'MD' });
         }
         catch (ex) {
             this.logger.log(['CameraService', 'error'], ex.message);
@@ -308,49 +296,16 @@ export class CameraService extends EventEmitter {
         this.logger.log(['CameraService', 'info'], `Starting camera initial configuration`);
 
         try {
-            this.logger.log(['CameraService', 'info'], `Turning off preview`);
+            let result = false;
 
-            let result = await this.ipcPostRequest('/preview', { switchStatus: false });
+            const videoSettings = {
+                ...this.videoSettings,
+                displayOut: 1
+            };
 
-            if (result === true) {
-                const videoSettings = {
-                    ...this.videoSettings,
-                    displayOut: 0
-                };
+            this.logger.log(['CameraService', 'info'], `Setting video configuration: ${JSON.stringify(videoSettings)}`);
 
-                this.logger.log(['CameraService', 'info'], `Setting video configuration: ${JSON.stringify(videoSettings)}`);
-
-                result = await this.configureDisplayOut(videoSettings);
-            }
-
-            if (result === true) {
-                this.logger.log(['CameraService', 'info'], `Turning on preview`);
-
-                result = await this.ipcPostRequest('/preview', { switchStatus: true });
-            }
-
-            if (result === true) {
-                this.logger.log(['CameraService', 'info'], `Retrieving RTSP video url`);
-
-                result = await this.getRtspVideoUrl();
-            }
-
-            if (result === true) {
-                this.logger.log(['CameraService', 'info'], `Turning off preview`);
-
-                result = await await this.ipcPostRequest('/preview', { switchStatus: false });
-            }
-
-            if (result === true) {
-                const videoSettings = {
-                    ...this.videoSettings,
-                    displayOut: 1
-                };
-
-                this.logger.log(['CameraService', 'info'], `Setting video configuration: ${JSON.stringify(videoSettings)}`);
-
-                result = await this.configureDisplayOut(videoSettings);
-            }
+            result = await this.configureDisplayOut(videoSettings);
 
             if (result === true) {
                 this.logger.log(['CameraService', 'info'], `Turning on preview`);
@@ -451,21 +406,21 @@ export class CameraService extends EventEmitter {
         }
     }
 
-    private async getRtspVideoUrl(): Promise<boolean> {
-        try {
-            const response = await this.ipcGetRequest('/preview');
-            const result = JSON.parse(response);
+    // private async getRtspVideoUrl(): Promise<boolean> {
+    //     try {
+    //         const response = await this.ipcGetRequest('/preview');
+    //         const result = JSON.parse(response);
 
-            this.rtspUrl = result.url || '';
+    //         this.rtspUrl = result.url || '';
 
-            return result.status;
-        }
-        catch (ex) {
-            this.logger.log(['CameraService', 'error'], ex.message);
+    //         return result.status;
+    //     }
+    //     catch (ex) {
+    //         this.logger.log(['CameraService', 'error'], ex.message);
 
-            return false;
-        }
-    }
+    //         return false;
+    //     }
+    // }
 
     private async ipcLogin(): Promise<boolean> {
         try {
@@ -474,8 +429,8 @@ export class CameraService extends EventEmitter {
                 url: `http://${this.ipAddress}:${this.port}/login`,
                 json: true,
                 body: {
-                    username: this.config.get('peabodyUsername'),
-                    userpwd: this.config.get('peabodyPassword')
+                    username: this.config.get('user'),
+                    userpwd: this.config.get('password')
                 }
             };
 
@@ -524,14 +479,14 @@ export class CameraService extends EventEmitter {
     }
 
     private async ipcGetRequest(path: string, params?: string): Promise<any> {
-        return this.ipcRequest('GET', path, params);
+        return this.ipcRequest('GET', path, {}, params);
     }
 
-    private async ipcPostRequest(path: string, payload?: any, params?: string): Promise<boolean> {
-        return this.ipcRequest('POST', path, params, payload);
+    private async ipcPostRequest(path: string, payload: any, params?: string): Promise<boolean> {
+        return this.ipcRequest('POST', path, payload, params);
     }
 
-    private async ipcRequest(method: string, path: string, payload?: any, params?: string): Promise<any> {
+    private async ipcRequest(method: string, path: string, payload: any, params?: string): Promise<any> {
         if (!this.sessionToken) {
             throw new Error('No valid login session available');
         }
@@ -575,7 +530,7 @@ export class CameraService extends EventEmitter {
     private async makeRequest(options): Promise<any> {
         return new Promise((resolve, reject) => {
             request({
-                timeout: 5000,
+                timeout: 10000,
                 ...options
             }, (requestError, response, body) => {
                 if (requestError) {
@@ -619,7 +574,10 @@ export class CameraService extends EventEmitter {
     }
 
     private async retrieveModelFiles() {
-        const storageDirectory = pathJoin((this.server.settings.app as any).peabodyDirectory, 'camera');
-        return fse.readdir(storageDirectory);
+        const cameraDirectory = pathJoin((this.server.settings.app as any).peabodyDirectory, 'camera');
+
+        this.logger.log(['ipcProvider', 'info'], `Looking for model files in: ${cameraDirectory}`);
+
+        return fse.readdir(cameraDirectory);
     }
 }
