@@ -588,7 +588,7 @@ export class CameraService extends EventEmitter {
     }
 
     private async getWlanIp() {
-        let cameraIpAddress = this.config.get('ipAddress');
+        let cameraIpAddress = this.config.get('cameraIpAddress');
 
         if (!cameraIpAddress) {
             // const ifConfigFilter = `ip addr show wlan0 | grep 'inet ' | awk '{print $2}' | cut -f1 -d'/'`;

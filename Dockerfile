@@ -1,10 +1,5 @@
 FROM arm32v7/node:10-slim
 
-# RUN curl -sL https://deb.nodesource.com/setup_10.x | bash -
-# RUN apt-get install -y \
-#     nodejs \
-#     net-tools
-
 RUN apt-get update && apt-get install -y \
     net-tools
 
