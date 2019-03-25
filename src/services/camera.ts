@@ -10,6 +10,7 @@ import { join as pathJoin } from 'path';
 import { ConfigService } from './config';
 import { LoggingService } from './logging';
 import { CameraResult } from './peabodyTypes';
+import { DataStreamController } from './dataStreamProcessor';
 
 const defaultresolutionSelectVal: number = 1;
 const defaultencodeModeSelectVal: number = 1;
@@ -29,6 +30,9 @@ export class CameraService extends EventEmitter {
 
     @inject('logger')
     private logger: LoggingService;
+
+    @inject('dataStreamController')
+    private dataStreamController: DataStreamController;
 
     private deviceName: string = defaultDeviceName;
     private maxLoginAttempts: number = defaultMaxLoginAttempts;
@@ -131,6 +135,8 @@ export class CameraService extends EventEmitter {
         let status = false;
 
         try {
+            this.dataStreamController.stopDataStreamProcessor();
+
             for (let iLogoutAttempts = 0; status === false && iLogoutAttempts < 3; ++iLogoutAttempts) {
                 try {
                     status = await this.ipcPostRequest('/logout', {});
@@ -292,6 +298,12 @@ export class CameraService extends EventEmitter {
         return Promise.resolve(false);
     }
 
+    public testInference(testInference: any): CameraResult {
+        this.dataStreamController.testInference(testInference);
+
+        return new CameraResult(true, 'Test inference', 'Succeeded');
+    }
+
     private async initializeCamera(): Promise<boolean> {
         this.logger.log(['CameraService', 'info'], `Starting camera initial configuration`);
 
@@ -323,6 +335,12 @@ export class CameraService extends EventEmitter {
                 this.logger.log(['CameraService', 'info'], `Retrieving RTSP VAM url`);
 
                 result = await this.getRtspVamUrl();
+            }
+
+            if (result === true) {
+                this.logger.log(['CameraService', 'info'], `Starting data stream processor`);
+
+                result = await this.dataStreamController.startDataStreamProcessor(this.vamUrl);
             }
 
             if (result === true) {
