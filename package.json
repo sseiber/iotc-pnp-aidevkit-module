@@ -40,7 +40,7 @@
     "lodash.get": "^4.4.2",
     "lodash.set": "^4.3.2",
     "nconf": "^0.10.0",
-    "nes": "^9.0.1",
+    "nes": "^9.1.0",
     "netmask": "^1.0.6",
     "query-string": "^6.1.0",
     "request": "^2.88.0",

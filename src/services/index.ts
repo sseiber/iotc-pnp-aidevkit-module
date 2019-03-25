@@ -6,6 +6,7 @@ import { StorageService } from './storage';
 import { StateService } from './state';
 import { PeabodyProxyService } from './peabodyProxy';
 import { CameraService } from './camera';
+import { DataStreamController } from './dataStreamProcessor';
 
 export default [
     ConfigService,
@@ -14,5 +15,6 @@ export default [
     StorageService,
     StateService,
     PeabodyProxyService,
-    CameraService
+    CameraService,
+    DataStreamController
 ];

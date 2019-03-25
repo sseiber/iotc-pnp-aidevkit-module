@@ -1,8 +1,20 @@
-FROM arm32v7/alpine:3.9
+FROM arm32v7/node:10-slim
 
-RUN apk update && apk add --no-cache nodejs nodejs-npm --repository=http://dl-cdn.alpinelinux.org/alpine/edge/main
+RUN curl -sL https://deb.nodesource.com/setup_10.x | bash -
+RUN apt-get install -y \
+    nodejs \
+    build-essential
+
+RUN apt-get install -y \
+    libgstreamer1.0 \
+    gstreamer1.0-plugins-base \
+    gstreamer1.0-plugins-good \
+    gstreamer1.0-libav \
+    gstreamer1.0-tools
+RUN rm -rf /var/lib/apt/lists/*
 
 # RUN apk add libgstreamer1.0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-libav gstreamer1.0-doc gstreamer1.0-tools --repository=http://dl-cdn.alpinelinux.org/alpine/edge/main
+# RUN apk add gstreamer gstreamer-tools gst-plugins-ugly gst-plugins-good gst-plugins-base
 
 ENV WORKINGDIR /app
 WORKDIR ${WORKINGDIR}
