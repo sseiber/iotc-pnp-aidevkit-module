@@ -7,6 +7,7 @@ import { promisify } from 'util';
 import { exec } from 'child_process';
 import * as fse from 'fs-extra';
 import { join as pathJoin } from 'path';
+import { platform as osPlatform } from 'os';
 import { ConfigService } from './config';
 import { LoggingService } from './logging';
 import { CameraResult } from './peabodyTypes';
@@ -19,6 +20,7 @@ const defaultfpsSelectVal: number = 1;
 const defaultMaxLoginAttempts: number = 3;
 const defaultDeviceName: string = 'Peabody';
 const defaultRtspVideoPort: string = '8900';
+const defaultIpcPort: string = '1080';
 
 @service('camera')
 export class CameraService extends EventEmitter {
@@ -42,7 +44,7 @@ export class CameraService extends EventEmitter {
         hostIpAddress: '127.0.0.1'
     };
     private sessionToken: string = '';
-    private port: string = '1080';
+    private ipcPort: string = defaultIpcPort;
     private vamUrl: string = '';
     private resolutions: string[] = [];
     private encoders: string[] = [];
@@ -82,6 +84,7 @@ export class CameraService extends EventEmitter {
         this.maxLoginAttempts = this.config.get('maxLoginAttemps') || defaultMaxLoginAttempts;
         this.deviceName = this.config.get('deviceName') || defaultDeviceName;
         this.rtspVideoPort = this.config.get('rtspVideoPort') || defaultRtspVideoPort;
+        this.ipcPort = this.config.get('ipcPort') || defaultIpcPort;
 
         // ###
         // ### Need a way to reset services when a new image is deployed
@@ -188,21 +191,23 @@ export class CameraService extends EventEmitter {
                 this.frameRates = [...response.fps];
                 this.videoSettings.displayOut = response.displayOut;
 
+                const modelFiles = await this.retrieveModelFiles();
+
                 return {
                     status: response.status,
                     sessionToken: this.sessionToken,
-                    ipAddresses: await this.getWlanIp(),
+                    ipAddresses: this.ipAddresses,
                     rtspUrl: `rtsp://${this.ipAddresses.cameraIpAddress}:${this.rtspVideoPort}/live`,
                     vamUrl: this.vamUrl,
                     resolution: this.resolutions[this.videoSettings.resolutionSelectVal],
-                    resolutions: [...this.resolutions],
+                    resolutions: this.resolutions,
                     encoder: this.encoders[this.videoSettings.encodeModeSelectVal],
-                    encoders: [...this.encoders],
+                    encoders: this.encoders,
                     bitRate: this.bitRates[this.videoSettings.bitRateSelectVal],
-                    bitRates: [...this.bitRates],
+                    bitRates: this.bitRates,
                     frameRate: this.frameRates[this.videoSettings.fpsSelectVal],
-                    frameRates: [...this.frameRates],
-                    modelFiles: await this.retrieveModelFiles()
+                    frameRates: this.frameRates,
+                    modelFiles
                 };
             }
         }
@@ -447,7 +452,7 @@ export class CameraService extends EventEmitter {
         try {
             const options = {
                 method: 'POST',
-                url: `http://${this.ipAddresses.cameraIpAddress}:${this.port}/login`,
+                url: `http://${this.ipAddresses.cameraIpAddress}:${this.ipcPort}/login`,
                 json: true,
                 body: {
                     username: this.config.get('user'),
@@ -516,7 +521,7 @@ export class CameraService extends EventEmitter {
             const url = params ? `${path}?${params}` : path;
             const options = {
                 method,
-                url: `http://${this.ipAddresses.cameraIpAddress}:${this.port}${url}`,
+                url: `http://${this.ipAddresses.cameraIpAddress}:${this.ipcPort}${url}`,
                 headers: {
                     Cookie: this.sessionToken
                 }
@@ -586,8 +591,28 @@ export class CameraService extends EventEmitter {
         let cameraIpAddress = this.config.get('ipAddress');
 
         if (!cameraIpAddress) {
-            const ifConfigFilter = `ip addr show wlan0 | grep 'inet ' | awk '{print $2}' | cut -f1 -d'/'`;
-            const { stdout } = await promisify(exec)(ifConfigFilter, { encoding: 'utf8' });
+            // const ifConfigFilter = `ip addr show wlan0 | grep 'inet ' | awk '{print $2}' | cut -f1 -d'/'`;
+            let ifConfigFilter;
+
+            switch (osPlatform()) {
+                case 'darwin':
+                    ifConfigFilter = `ifconfig | grep "inet " | grep -v 127.0.0.1 | cut -d\  -f2`;
+                    break;
+
+                case 'win32':
+                    ifConfigFilter = `echo .`;
+                    break;
+
+                case 'linux':
+                default:
+                    ifConfigFilter = `ifconfig wlan0 | grep 'inet' | cut -d: -f2 | awk '{print $2}'`;
+                    break;
+            }
+
+            const { stdout, stderr } = await promisify(exec)(ifConfigFilter, { encoding: 'utf8' });
+
+            this.logger.log(['ipcProvider', 'error'], `get ip stdout: ${stdout}`);
+            this.logger.log(['ipcProvider', 'error'], `get ip stderr: ${stderr}`);
 
             cameraIpAddress = (stdout || '127.0.0.1').trim();
         }
@@ -599,10 +624,17 @@ export class CameraService extends EventEmitter {
     }
 
     private async retrieveModelFiles() {
-        const cameraDirectory = pathJoin((this.server.settings.app as any).peabodyDirectory, 'camera');
+        try {
+            const cameraDirectory = pathJoin((this.server.settings.app as any).peabodyDirectory, 'camera');
 
-        this.logger.log(['ipcProvider', 'info'], `Looking for model files in: ${cameraDirectory}`);
+            this.logger.log(['ipcProvider', 'info'], `Looking for model files in: ${cameraDirectory}`);
 
-        return fse.readdir(cameraDirectory);
+            return fse.readdir(cameraDirectory);
+        }
+        catch (ex) {
+            this.logger.log(['ipcProvider', 'error'], `Error enumerating model files: ${ex.message}`);
+
+            return [];
+        }
     }
 }
