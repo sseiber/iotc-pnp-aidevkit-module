@@ -81,13 +81,17 @@ export class DataStreamController {
 
 const chunkHeader0 = '00000000';
 const startOfInference = '{ "t';
+const transformStateStartedHeader = 'SH';
+const transformStateWaitingForHeader = 'WH';
 
 class FrameProcessor extends Transform {
+    private transformState: string;
     private inferenceLines: any[];
 
     constructor(options) {
         super(options);
 
+        this.transformState = transformStateWaitingForHeader;
         this.inferenceLines = [];
     }
 
@@ -98,40 +102,66 @@ class FrameProcessor extends Transform {
         if (chunkString.slice(0, 8) !== chunkHeader0) {
             const chunkLines = chunkString.split('\n');
             for (const chunkLine of chunkLines) {
-                this.inferenceLines.push(chunkLine.slice(-16));
-            }
-
-            const inferenceTextData = this.inferenceLines.join('');
-            try {
-                const inference = JSON.parse(inferenceTextData);
-
-                if ((this as any)._readableState.pipesCount > 0) {
-                    this.push(inference);
-                }
-
-                if (this.listenerCount('inference') > 0) {
-                    this.emit('inference', inference);
+                if (chunkLine.slice(0, 8) !== chunkHeader0) {
+                    this.inferenceLines.push(chunkLine.slice(-16));
                 }
             }
-            catch (ex) {
-                // tslint:disable no-console variable-name
-                console.log(`Malformed inference data: ${inferenceTextData}`);
-            }
 
-            this.inferenceLines = [];
+            this.emitInference(chunkString);
+
+            this.transformState = transformStateWaitingForHeader;
         }
         else {
+            if (this.transformState === transformStateStartedHeader) {
+                // looks like we got a full inference in a single (previous)
+                // chunk - so parse it now.
+                this.emitInference(chunkString);
+
+                this.transformState = transformStateWaitingForHeader;
+            }
+
             const startIndex = chunkString.indexOf(startOfInference);
             if (startIndex !== -1) {
+                this.transformState = transformStateStartedHeader;
                 this.inferenceLines.push(startOfInference);
 
                 const chunkLines = chunkString.slice(startIndex + 5).split('\n');
                 for (const chunkLine of chunkLines) {
-                    this.inferenceLines.push(chunkLine.slice(-16));
+                    if (chunkLine.slice(0, 8) !== chunkHeader0) {
+                        this.inferenceLines.push(chunkLine.slice(-16));
+                    }
                 }
             }
         }
 
         return done();
+    }
+
+    private emitInference(chunkString: string): boolean {
+        let result = true;
+        const inferenceTextData = this.inferenceLines.join('');
+        try {
+            const inference = JSON.parse(inferenceTextData);
+
+            if ((this as any)._readableState.pipesCount > 0) {
+                this.push(inference);
+            }
+
+            if (this.listenerCount('inference') > 0) {
+                this.emit('inference', inference);
+            }
+        }
+        catch (ex) {
+            // tslint:disable no-console variable-name
+            console.log(`##Parse exception: ${inferenceTextData}`);
+
+            // tslint:disable no-console variable-name
+            console.log(`##Raw: ${chunkString}`);
+
+            result = false;
+        }
+
+        this.inferenceLines = [];
+        return result;
     }
 }

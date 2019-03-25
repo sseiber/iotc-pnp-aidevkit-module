@@ -37,7 +37,10 @@ export class CameraService extends EventEmitter {
     private deviceName: string = defaultDeviceName;
     private maxLoginAttempts: number = defaultMaxLoginAttempts;
     private rtspVideoPort: string = defaultRtspVideoPort;
-    private ipAddress: string = '';
+    private ipAddresses: any = {
+        cameraIpAddress: '127.0.0.1',
+        hostIpAddress: '127.0.0.1'
+    };
     private sessionToken: string = '';
     private port: string = '1080';
     private vamUrl: string = '';
@@ -98,7 +101,7 @@ export class CameraService extends EventEmitter {
                 await this.logout();
             }
 
-            this.ipAddress = await this.getWlanIp();
+            this.ipAddresses = await this.getWlanIp();
 
             this.logger.log(['CameraService', 'info'], `Logging into new session`);
 
@@ -188,17 +191,17 @@ export class CameraService extends EventEmitter {
                 return {
                     status: response.status,
                     sessionToken: this.sessionToken,
-                    ipAddress: await this.getWlanIp(),
-                    rtspUrl: `rtsp://${this.ipAddress}:${this.rtspVideoPort}/live`,
+                    ipAddresses: await this.getWlanIp(),
+                    rtspUrl: `rtsp://${this.ipAddresses.cameraIpAddress}:${this.rtspVideoPort}/live`,
                     vamUrl: this.vamUrl,
                     resolution: this.resolutions[this.videoSettings.resolutionSelectVal],
-                    resolutions: [ ...this.resolutions ],
+                    resolutions: [...this.resolutions],
                     encoder: this.encoders[this.videoSettings.encodeModeSelectVal],
-                    encoders: [ ...this.encoders ],
+                    encoders: [...this.encoders],
                     bitRate: this.bitRates[this.videoSettings.bitRateSelectVal],
-                    bitRates: [ ...this.bitRates ],
+                    bitRates: [...this.bitRates],
                     frameRate: this.frameRates[this.videoSettings.fpsSelectVal],
-                    frameRates: [ ...this.frameRates ],
+                    frameRates: [...this.frameRates],
                     modelFiles: await this.retrieveModelFiles()
                 };
             }
@@ -444,7 +447,7 @@ export class CameraService extends EventEmitter {
         try {
             const options = {
                 method: 'POST',
-                url: `http://${this.ipAddress}:${this.port}/login`,
+                url: `http://${this.ipAddresses.cameraIpAddress}:${this.port}/login`,
                 json: true,
                 body: {
                     username: this.config.get('user'),
@@ -513,7 +516,7 @@ export class CameraService extends EventEmitter {
             const url = params ? `${path}?${params}` : path;
             const options = {
                 method,
-                url: `http://${this.ipAddress}:${this.port}${url}`,
+                url: `http://${this.ipAddresses.cameraIpAddress}:${this.port}${url}`,
                 headers: {
                     Cookie: this.sessionToken
                 }
@@ -580,15 +583,19 @@ export class CameraService extends EventEmitter {
     }
 
     private async getWlanIp() {
-        const ipAddress = this.config.get('ipAddress');
-        if (ipAddress) {
-            return ipAddress;
+        let cameraIpAddress = this.config.get('ipAddress');
+
+        if (!cameraIpAddress) {
+            const ifConfigFilter = `ip addr show wlan0 | grep 'inet ' | awk '{print $2}' | cut -f1 -d'/'`;
+            const { stdout } = await promisify(exec)(ifConfigFilter, { encoding: 'utf8' });
+
+            cameraIpAddress = (stdout || '127.0.0.1').trim();
         }
 
-        const ifConfigFilter = `ip addr show wlan0 | grep 'inet ' | awk '{print $2}' | cut -f1 -d'/'`;
-        const { stdout } = await promisify(exec)(ifConfigFilter, { encoding: 'utf8' });
-
-        return (stdout || '127.0.0.1').trim();
+        return {
+            cameraIpAddress,
+            hostIpAddress: this.config.get('hostIpAddress') || cameraIpAddress
+        };
     }
 
     private async retrieveModelFiles() {
