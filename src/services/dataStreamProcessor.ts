@@ -94,14 +94,16 @@ class FrameProcessor extends Transform {
     // @ts-ignore (encoding)
     public _transform(chunk: Buffer, encoding: string, done: callback) {
         const chunkString = chunk.toString('utf8');
-        if (chunkString.substring(0, 8) !== chunkHeader0) {
+
+        if (chunkString.slice(0, 8) !== chunkHeader0) {
             const chunkLines = chunkString.split('\n');
             for (const chunkLine of chunkLines) {
-                this.inferenceLines.push(chunkLine.substring(74).trim());
+                this.inferenceLines.push(chunkLine.slice(-16));
             }
 
+            const inferenceTextData = this.inferenceLines.join('');
             try {
-                const inference = JSON.parse(this.inferenceLines.join(''));
+                const inference = JSON.parse(inferenceTextData);
 
                 if ((this as any)._readableState.pipesCount > 0) {
                     this.push(inference);
@@ -113,7 +115,7 @@ class FrameProcessor extends Transform {
             }
             catch (ex) {
                 // tslint:disable no-console variable-name
-                console.log(`Malformed inference data: ${this.inferenceLines.join('')}`);
+                console.log(`Malformed inference data: ${inferenceTextData}`);
             }
 
             this.inferenceLines = [];
@@ -123,11 +125,9 @@ class FrameProcessor extends Transform {
             if (startIndex !== -1) {
                 this.inferenceLines.push(startOfInference);
 
-                const chunkLines = chunkString.substring(92).split('\n');
+                const chunkLines = chunkString.slice(startIndex + 5).split('\n');
                 for (const chunkLine of chunkLines) {
-                    if (chunkLine.substring(0, 8) !== chunkHeader0) {
-                        this.inferenceLines.push(chunkLine.substring(74).trim());
-                    }
+                    this.inferenceLines.push(chunkLine.slice(-16));
                 }
             }
         }
