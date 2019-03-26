@@ -176,40 +176,24 @@ export class CameraService extends EventEmitter {
         let status = false;
 
         try {
-            this.logger.log(['CameraService', 'info'], `Getting video configuration`);
-            const response = JSON.parse(await this.ipcGetRequest('/video'));
-            status = response.status;
+            const modelFiles = await this.retrieveModelFiles();
 
-            if (status === true) {
-                this.videoSettings.resolutionSelectVal = response.resolutionSelectVal;
-                this.resolutions = [...response.resolution];
-                this.videoSettings.encodeModeSelectVal = response.encodeModeSelectVal;
-                this.encoders = [...response.encodeMode];
-                this.videoSettings.bitRateSelectVal = response.bitRateSelectVal;
-                this.bitRates = [...response.bitRate];
-                this.videoSettings.fpsSelectVal = response.fpsSelectVal;
-                this.frameRates = [...response.fps];
-                this.videoSettings.displayOut = response.displayOut;
-
-                const modelFiles = await this.retrieveModelFiles();
-
-                return {
-                    status: response.status,
-                    sessionToken: this.sessionToken,
-                    ipAddresses: this.ipAddresses,
-                    rtspUrl: `rtsp://${this.ipAddresses.cameraIpAddress}:${this.rtspVideoPort}/live`,
-                    vamUrl: this.vamUrl,
-                    resolution: this.resolutions[this.videoSettings.resolutionSelectVal],
-                    resolutions: this.resolutions,
-                    encoder: this.encoders[this.videoSettings.encodeModeSelectVal],
-                    encoders: this.encoders,
-                    bitRate: this.bitRates[this.videoSettings.bitRateSelectVal],
-                    bitRates: this.bitRates,
-                    frameRate: this.frameRates[this.videoSettings.fpsSelectVal],
-                    frameRates: this.frameRates,
-                    modelFiles
-                };
-            }
+            return {
+                status: true,
+                sessionToken: this.sessionToken,
+                ipAddresses: this.ipAddresses,
+                rtspUrl: `rtsp://${this.ipAddresses.cameraIpAddress}:${this.rtspVideoPort}/live`,
+                vamUrl: this.vamUrl,
+                resolution: this.resolutions[this.videoSettings.resolutionSelectVal],
+                resolutions: this.resolutions,
+                encoder: this.encoders[this.videoSettings.encodeModeSelectVal],
+                encoders: this.encoders,
+                bitRate: this.bitRates[this.videoSettings.bitRateSelectVal],
+                bitRates: this.bitRates,
+                frameRate: this.frameRates[this.videoSettings.fpsSelectVal],
+                frameRates: this.frameRates,
+                modelFiles
+            };
         }
         catch (ex) {
             this.logger.log(['CameraService', 'error'], ex.message);
@@ -326,6 +310,25 @@ export class CameraService extends EventEmitter {
             this.logger.log(['CameraService', 'info'], `Setting video configuration: ${JSON.stringify(videoSettings)}`);
 
             result = await this.configureDisplayOut(videoSettings);
+
+            if (result === true) {
+                this.logger.log(['CameraService', 'info'], `Retrieving camera settings`);
+
+                const response = JSON.parse(await this.ipcGetRequest('/video'));
+                result = response.status;
+
+                if (result === true) {
+                    this.videoSettings.resolutionSelectVal = response.resolutionSelectVal;
+                    this.resolutions = [...response.resolution];
+                    this.videoSettings.encodeModeSelectVal = response.encodeModeSelectVal;
+                    this.encoders = [...response.encodeMode];
+                    this.videoSettings.bitRateSelectVal = response.bitRateSelectVal;
+                    this.bitRates = [...response.bitRate];
+                    this.videoSettings.fpsSelectVal = response.fpsSelectVal;
+                    this.frameRates = [...response.fps];
+                    this.videoSettings.displayOut = response.displayOut;
+                }
+            }
 
             if (result === true) {
                 this.logger.log(['CameraService', 'info'], `Turning on preview`);

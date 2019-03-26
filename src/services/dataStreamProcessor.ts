@@ -80,9 +80,9 @@ export class DataStreamController {
 }
 
 const chunkHeader0 = '00000000';
-const startOfInference = '{ "t';
-const transformStateStartedHeader = 'SH';
-const transformStateWaitingForHeader = 'WH';
+const inferenceHeader = '{ "t';
+const transformStateLookingForHeader = 'WH';
+const transformStateParsingInference = 'PI';
 
 class FrameProcessor extends Transform {
     private transformState: string;
@@ -91,46 +91,40 @@ class FrameProcessor extends Transform {
     constructor(options) {
         super(options);
 
-        this.transformState = transformStateWaitingForHeader;
+        this.transformState = transformStateLookingForHeader;
         this.inferenceLines = [];
     }
 
     // @ts-ignore (encoding)
     public _transform(chunk: Buffer, encoding: string, done: callback) {
-        const chunkString = chunk.toString('utf8');
+        let chunkIndex = 0;
+        const chunkBufferString = chunk.toString('utf8');
 
-        if (chunkString.slice(0, 8) !== chunkHeader0) {
+        while (chunkIndex < chunkBufferString.length) {
+            const chunkString = chunkBufferString.slice(chunkIndex);
+
             const chunkLines = chunkString.split('\n');
             for (const chunkLine of chunkLines) {
-                if (chunkLine.slice(0, 8) !== chunkHeader0) {
-                    this.inferenceLines.push(chunkLine.slice(-16));
-                }
-            }
+                if (this.transformState === transformStateLookingForHeader) {
+                    const lineIndex = chunkLine.indexOf(inferenceHeader);
+                    if (lineIndex !== -1) {
+                        this.transformState = transformStateParsingInference;
 
-            this.emitInference(chunkString);
-
-            this.transformState = transformStateWaitingForHeader;
-        }
-        else {
-            if (this.transformState === transformStateStartedHeader) {
-                // looks like we got a full inference in a single (previous)
-                // chunk - so parse it now.
-                this.emitInference(chunkString);
-
-                this.transformState = transformStateWaitingForHeader;
-            }
-
-            const startIndex = chunkString.indexOf(startOfInference);
-            if (startIndex !== -1) {
-                this.transformState = transformStateStartedHeader;
-                this.inferenceLines.push(startOfInference);
-
-                const chunkLines = chunkString.slice(startIndex + 5).split('\n');
-                for (const chunkLine of chunkLines) {
-                    if (chunkLine.slice(0, 8) !== chunkHeader0) {
-                        this.inferenceLines.push(chunkLine.slice(-16));
+                        this.inferenceLines.push(chunkLine.slice(lineIndex).trim());
                     }
                 }
+                else if (this.transformState === transformStateParsingInference) {
+                    if (chunkLine.slice(0, 8) === chunkHeader0) {
+                        this.emitInference(chunkString);
+
+                        this.transformState = transformStateLookingForHeader;
+                        break;
+                    }
+
+                    this.inferenceLines.push(chunkLine.slice(-16).trim());
+                }
+
+                chunkIndex += chunkLine.length + 1;
             }
         }
 
@@ -162,6 +156,7 @@ class FrameProcessor extends Transform {
         }
 
         this.inferenceLines = [];
+
         return result;
     }
 }
