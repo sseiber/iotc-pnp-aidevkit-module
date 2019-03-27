@@ -7,6 +7,7 @@ import { StateService } from './state';
 import { PeabodyProxyService } from './peabodyProxy';
 import { CameraService } from './camera';
 import { DataStreamController } from './dataStreamProcessor';
+import { IoTCentralService } from './iotcentral';
 
 export default [
     ConfigService,
@@ -16,5 +17,6 @@ export default [
     StateService,
     PeabodyProxyService,
     CameraService,
-    DataStreamController
+    DataStreamController,
+    IoTCentralService
 ];

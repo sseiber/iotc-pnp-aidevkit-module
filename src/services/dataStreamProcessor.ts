@@ -45,7 +45,10 @@ export class DataStreamController {
                             + `"${_get(inferenceItem, 'display_name')}" `
                             + `${_get(inferenceItem, 'confidence')}% `);
 
-                        this.server.publish(`/api/v1/inference`, inferenceItem);
+                        this.server.publish(`/api/v1/inference`, {
+                            timestamp: inference.timestamp,
+                            ...inferenceItem
+                        });
                     }
                 }
             });
@@ -69,7 +72,7 @@ export class DataStreamController {
         const process = this.gstProcess;
         this.gstProcess = null;
 
-        process.exit(1);
+        process.kill();
 
         return;
     }

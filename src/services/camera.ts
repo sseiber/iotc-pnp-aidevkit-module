@@ -10,7 +10,7 @@ import { join as pathJoin } from 'path';
 import { platform as osPlatform } from 'os';
 import { ConfigService } from './config';
 import { LoggingService } from './logging';
-import { CameraResult } from './peabodyTypes';
+import { ICameraResult } from './peabodyTypes';
 import { DataStreamController } from './dataStreamProcessor';
 
 const defaultresolutionSelectVal: number = 1;
@@ -94,7 +94,7 @@ export class CameraService extends EventEmitter {
         await this.login();
     }
 
-    public async login(): Promise<CameraResult> {
+    public async login(): Promise<ICameraResult> {
         let status = false;
 
         try {
@@ -130,14 +130,14 @@ export class CameraService extends EventEmitter {
             }
         }
 
-        return new CameraResult(
+        return {
             status,
-            'Login error',
-            status ? 'Succeeded' : `An error occurred while trying to log into the ${this.deviceName} device. Try rebooting the device and login again.`
-        );
+            title: 'Login',
+            message: status ? 'Succeeded' : `An error occurred while trying to log into the ${this.deviceName} device. Try rebooting the device and login again.`
+        };
     }
 
-    public async logout(): Promise<CameraResult> {
+    public async logout(): Promise<ICameraResult> {
         let status = false;
 
         try {
@@ -165,54 +165,64 @@ export class CameraService extends EventEmitter {
             status = false;
         }
 
-        return new CameraResult(
+        return {
             status,
-            'Logoff error',
-            status ? 'Succeeded' : `The attempt to log out of the ${this.deviceName} device didn't complete successfully. Try rebooting the device and login again.`
-        );
+            title: 'Logoff',
+            message: status ? 'Succeeded' : `The attempt to log out of the ${this.deviceName} device didn't complete successfully. Try rebooting the device and login again.`
+        };
     }
 
-    public async getConfiguration(): Promise<any> {
-        let status = false;
-
-        try {
-            const modelFiles = await this.retrieveModelFiles();
-
+    public async getConfiguration(): Promise<ICameraResult> {
+        if (!this.sessionToken) {
             return {
                 status: true,
-                sessionToken: this.sessionToken,
-                ipAddresses: this.ipAddresses,
-                rtspUrl: `rtsp://${this.ipAddresses.cameraIpAddress}:${this.rtspVideoPort}/live`,
-                vamUrl: this.vamUrl,
-                resolution: this.resolutions[this.videoSettings.resolutionSelectVal],
-                resolutions: this.resolutions,
-                encoder: this.encoders[this.videoSettings.encodeModeSelectVal],
-                encoders: this.encoders,
-                bitRate: this.bitRates[this.videoSettings.bitRateSelectVal],
-                bitRates: this.bitRates,
-                frameRate: this.frameRates[this.videoSettings.fpsSelectVal],
-                frameRates: this.frameRates,
-                modelFiles
+                title: 'Camera',
+                message: `A valid session is required to retrieve camera configuration settings. Try logging in first.`,
+                body: {}
             };
         }
-        catch (ex) {
-            this.logger.log(['CameraService', 'error'], ex.message);
+        else {
+            try {
+                const modelFiles = await this.retrieveModelFiles();
 
-            status = false;
+                return {
+                    status: true,
+                    title: 'Camera',
+                    message: 'Succeeded',
+                    body: {
+                        sessionToken: this.sessionToken,
+                        ipAddresses: this.ipAddresses,
+                        rtspUrl: `rtsp://${this.ipAddresses.cameraIpAddress}:${this.rtspVideoPort}/live`,
+                        vamUrl: this.vamUrl,
+                        resolution: this.resolutions[this.videoSettings.resolutionSelectVal],
+                        resolutions: this.resolutions,
+                        encoder: this.encoders[this.videoSettings.encodeModeSelectVal],
+                        encoders: this.encoders,
+                        bitRate: this.bitRates[this.videoSettings.bitRateSelectVal],
+                        bitRates: this.bitRates,
+                        frameRate: this.frameRates[this.videoSettings.fpsSelectVal],
+                        frameRates: this.frameRates,
+                        modelFiles
+                    }
+                };
+            }
+            catch (ex) {
+                this.logger.log(['CameraService', 'error'], ex.message);
+
+                return {
+                    status: false,
+                    title: 'Camera',
+                    message: `An error occurred while trying to get configuration settings from the ${this.deviceName} device.`
+                };
+            }
         }
-
-        return new CameraResult(
-            status,
-            'Camera error',
-            status ? 'Succeeded' : `An error occurred while trying to get configuration settings from the ${this.deviceName} device.`
-        );
     }
 
     public async resetCameraServices(): Promise<void> {
         return;
     }
 
-    public async togglePreview(switchStatus: boolean): Promise<CameraResult> {
+    public async togglePreview(switchStatus: boolean): Promise<ICameraResult> {
         let status;
 
         try {
@@ -224,11 +234,11 @@ export class CameraService extends EventEmitter {
             status = false;
         }
 
-        return new CameraResult(
+        return {
             status,
-            'Camera error',
-            status ? 'Succeeded' : `The attempt to switch ${status ? 'on' : 'off'} the video output didn't complete successfully.`
-        );
+            title: 'Camera',
+            message: status ? 'Succeeded' : `The attempt to switch ${status ? 'on' : 'off'} the video output didn't complete successfully.`
+        };
     }
 
     public async toggleVam(switchStatus: boolean): Promise<boolean> {
@@ -288,12 +298,6 @@ export class CameraService extends EventEmitter {
 
         this.logger.log(['CameraService', 'error'], 'Invalid overlay type use (inference/text)');
         return Promise.resolve(false);
-    }
-
-    public testInference(testInference: any): CameraResult {
-        this.dataStreamController.testInference(testInference);
-
-        return new CameraResult(true, 'Test inference', 'Succeeded');
     }
 
     private async initializeCamera(): Promise<boolean> {
@@ -612,12 +616,16 @@ export class CameraService extends EventEmitter {
                     break;
             }
 
-            const { stdout, stderr } = await promisify(exec)(ifConfigFilter, { encoding: 'utf8' });
+            try {
+                const { stdout } = await promisify(exec)(ifConfigFilter, { encoding: 'utf8' });
 
-            this.logger.log(['ipcProvider', 'error'], `get ip stdout: ${stdout}`);
-            this.logger.log(['ipcProvider', 'error'], `get ip stderr: ${stderr}`);
+                this.logger.log(['ipcProvider', 'info'], `get ip stdout: ${stdout}`);
 
-            cameraIpAddress = (stdout || '127.0.0.1').trim();
+                cameraIpAddress = (stdout || '127.0.0.1').trim();
+            }
+            catch (ex) {
+                this.logger.log(['ipcProvider', 'error'], `get ip stderr: ${ex.message}`);
+            }
         }
 
         return {
@@ -637,7 +645,7 @@ export class CameraService extends EventEmitter {
         catch (ex) {
             this.logger.log(['ipcProvider', 'error'], `Error enumerating model files: ${ex.message}`);
 
-            return [];
+            return ['\u00a0', '\u00a0', '\u00a0', '\u00a0'];
         }
     }
 }

@@ -210,37 +210,6 @@ export class PeabodyRoutes extends RoutePlugin {
     }
 
     @route({
-        method: 'POST',
-        path: '/api/v1/peabody/testinference',
-        options: {
-            auth: {
-                strategies: ['peabody-jwt', 'peabody-localnetwork'],
-                access: {
-                    scope: ['api-client', 'admin']
-                }
-            },
-            tags: ['peabody'],
-            description: 'Publish a test inference on the Nes subscription'
-        }
-    })
-    // @ts-ignore (request)
-    public async postTestInference(request: Request, h: ResponseToolkit) {
-        try {
-            const testInference = _get(request, 'payload');
-            if (!testInference) {
-                throw Boom.badRequest(`Expected a test inference payload`);
-            }
-
-            const result = await this.camera.testInference(testInference);
-
-            return h.response(result).code(201);
-        }
-        catch (ex) {
-            throw Boom.badRequest(ex.message);
-        }
-    }
-
-    @route({
         method: 'GET',
         path: '/api/v1/peabody/configuration',
         options: {
