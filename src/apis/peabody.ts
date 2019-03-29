@@ -210,6 +210,43 @@ export class PeabodyRoutes extends RoutePlugin {
     }
 
     @route({
+        method: 'POST',
+        path: '/api/v1/peabody/model',
+        options: {
+            payload: {
+                output: 'stream',
+                maxBytes: 1024 * 1024 * 100, // BAD! Need a streaming solution for HapiJS
+                allow: 'multipart/form-data',
+                parse: true
+            },
+            auth: {
+                strategies: ['peabody-jwt', 'peabody-localnetwork'],
+                access: {
+                    scope: ['api-client', 'admin']
+                }
+            },
+            tags: ['peabody'],
+            description: 'Upload a new dlc model file and activate it'
+        }
+    })
+    // @ts-ignore (request)
+    public async postChangeModel(request: Request, h: ResponseToolkit) {
+        try {
+            const file = (request.payload as any).model;
+            if (!file) {
+                throw Boom.badRequest('No file descriptor found in the form data request');
+            }
+
+            const result = await this.camera.changeModel(file);
+
+            return h.response(result).code(201);
+        }
+        catch (ex) {
+            throw Boom.badRequest(ex.message);
+        }
+    }
+
+    @route({
         method: 'GET',
         path: '/api/v1/peabody/configuration',
         options: {

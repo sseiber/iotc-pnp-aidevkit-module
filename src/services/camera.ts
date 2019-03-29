@@ -5,11 +5,10 @@ import { EventEmitter } from 'events';
 import * as _get from 'lodash.get';
 import { promisify } from 'util';
 import { exec } from 'child_process';
-import * as fse from 'fs-extra';
-import { join as pathJoin } from 'path';
 import { platform as osPlatform } from 'os';
 import { ConfigService } from './config';
 import { LoggingService } from './logging';
+import { FileHandlerService } from './fileHandler';
 import { ICameraResult } from './peabodyTypes';
 import { DataStreamController } from './dataStreamProcessor';
 
@@ -32,6 +31,9 @@ export class CameraService extends EventEmitter {
 
     @inject('logger')
     private logger: LoggingService;
+
+    @inject('fileHandler')
+    private fileHandler: FileHandlerService;
 
     @inject('dataStreamController')
     private dataStreamController: DataStreamController;
@@ -57,6 +59,7 @@ export class CameraService extends EventEmitter {
         fpsSelectVal: defaultfpsSelectVal,
         displayOut: 0
     };
+    private modelFiles: string[] = [];
 
     public get currentResolutionSelectVal() {
         return this.videoSettings.resolutionSelectVal;
@@ -183,7 +186,7 @@ export class CameraService extends EventEmitter {
         }
         else {
             try {
-                const modelFiles = await this.retrieveModelFiles();
+                this.modelFiles = await this.fileHandler.retrieveModelFiles();
 
                 return {
                     status: true,
@@ -202,7 +205,7 @@ export class CameraService extends EventEmitter {
                         bitRates: this.bitRates,
                         frameRate: this.frameRates[this.videoSettings.fpsSelectVal],
                         frameRates: this.frameRates,
-                        modelFiles
+                        modelFiles: this.modelFiles
                     }
                 };
             }
@@ -218,8 +221,43 @@ export class CameraService extends EventEmitter {
         }
     }
 
-    public async resetCameraServices(): Promise<void> {
-        return;
+    public async changeModel(file: any): Promise<ICameraResult> {
+        let status = false;
+
+        try {
+            status = await this.fileHandler.uploadAndVerifyModelFiles(file);
+
+            if (status) {
+                await this.logout();
+                status = true;
+            }
+
+            if (status) {
+                status  = await this.fileHandler.changeModelFiles(file);
+            }
+
+            if (status) {
+                const result = await this.login();
+                status = result.status;
+            }
+
+            if (status) {
+                this.server.publish('/api/v1/subscription/model', this.modelFiles);
+            }
+        }
+        catch (ex) {
+            this.logger.log(['CameraService', 'error'], ex.message);
+
+            status = false;
+        }
+
+        return {
+            status,
+            title: 'Camera',
+            message: status
+                ? 'Succeeded'
+                : 'An error occurred while updating your vision model files'
+        };
     }
 
     public async togglePreview(switchStatus: boolean): Promise<ICameraResult> {
@@ -512,11 +550,31 @@ export class CameraService extends EventEmitter {
     }
 
     private async ipcGetRequest(path: string, params?: string): Promise<any> {
-        return this.ipcRequest('GET', path, {}, params);
+        try {
+            const result = await this.ipcRequest('GET', path, {}, params);
+
+            return result;
+        }
+        catch (ex) {
+            this.logger.log(['ipcProvider', 'error'], ex.message);
+
+            return {
+                status: false
+            };
+        }
     }
 
     private async ipcPostRequest(path: string, payload: any, params?: string): Promise<boolean> {
-        return this.ipcRequest('POST', path, payload, params);
+        try {
+            const result = await this.ipcRequest('POST', path, payload, params);
+
+            return result;
+        }
+        catch (ex) {
+            this.logger.log(['ipcProvider', 'error'], ex.message);
+
+            return false;
+        }
     }
 
     private async ipcRequest(method: string, path: string, payload: any, params?: string): Promise<any> {
@@ -632,20 +690,5 @@ export class CameraService extends EventEmitter {
             cameraIpAddress,
             hostIpAddress: this.config.get('hostIpAddress') || cameraIpAddress
         };
-    }
-
-    private async retrieveModelFiles() {
-        try {
-            const cameraDirectory = pathJoin((this.server.settings.app as any).peabodyDirectory, 'camera');
-
-            this.logger.log(['ipcProvider', 'info'], `Looking for model files in: ${cameraDirectory}`);
-
-            return fse.readdir(cameraDirectory);
-        }
-        catch (ex) {
-            this.logger.log(['ipcProvider', 'error'], `Error enumerating model files: ${ex.message}`);
-
-            return ['\u00a0', '\u00a0', '\u00a0', '\u00a0'];
-        }
     }
 }

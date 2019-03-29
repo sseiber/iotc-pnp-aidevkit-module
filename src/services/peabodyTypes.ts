@@ -4,3 +4,13 @@ export interface ICameraResult {
     message: string;
     body?: any;
 }
+
+export interface IFileUploadDetails {
+    formFieldName: string;
+    sourceFileName: string;
+    destFileName: string;
+    mimetype: string;
+    destFileDirectory: string;
+    destFilePath: string;
+    size: number;
+}

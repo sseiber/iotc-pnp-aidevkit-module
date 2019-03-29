@@ -1,7 +1,8 @@
 FROM arm32v7/node:10-slim
 
 RUN apt-get update && apt-get install -y \
-    net-tools
+    net-tools \
+    unzip
 
 RUN apt-get install -y \
     libgstreamer1.0 \

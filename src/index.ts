@@ -44,6 +44,8 @@ async function start() {
         server.log(['startup', 'info'], ` > Plugins: [${Object.keys(server.registrations).join(', ')}]`);
         server.log(['startup', 'info'], ` > Machine: ${osPlatform()}, ${osCpus().length} core, ` +
             `freemem=${(osFreeMem() / 1024 / 1024).toFixed(0)}mb, totalmem=${(osTotalMem() / 1024 / 1024).toFixed(0)}mb`);
+
+        server.publish(`/api/v1/subscription/up`, {});
     }
     catch (error) {
         // tslint:disable-next-line:no-console

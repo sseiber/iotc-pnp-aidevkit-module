@@ -1,7 +1,7 @@
 import { service, inject } from '@sseiber/sprightly';
-import { Server } from 'hapi';
 import { spawn } from 'child_process';
 import { LoggingService } from './logging';
+import { SubscriptionService } from '../services/subscription';
 import * as _get from 'lodash.get';
 import { Transform } from 'stream';
 
@@ -10,11 +10,11 @@ const gstCommandArgs = '-q rtspsrc location=###DATA_STREAM_URL protocols=tcp ! a
 
 @service('dataStreamController')
 export class DataStreamController {
-    @inject('$server')
-    private server: Server;
-
     @inject('logger')
     private logger: LoggingService;
+
+    @inject('subscription')
+    private subscription: SubscriptionService;
 
     private gstProcess = null;
 
@@ -45,7 +45,7 @@ export class DataStreamController {
                             + `"${_get(inferenceItem, 'display_name')}" `
                             + `${_get(inferenceItem, 'confidence')}% `);
 
-                        this.server.publish(`/api/v1/inference`, {
+                        this.subscription.publishInference({
                             timestamp: inference.timestamp,
                             ...inferenceItem
                         });
@@ -75,10 +75,6 @@ export class DataStreamController {
         process.kill();
 
         return;
-    }
-
-    public testInference(testInference: any) {
-        this.server.publish(`/api/v1/inference`, testInference);
     }
 }
 
