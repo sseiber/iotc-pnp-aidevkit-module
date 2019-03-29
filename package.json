@@ -1,6 +1,6 @@
 {
   "name": "peabody-local-service",
-  "version": "1.0.43",
+  "version": "1.0.44",
   "description": "Local service for Peabody",
   "main": "index.js",
   "config": {
