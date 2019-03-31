@@ -1,17 +1,15 @@
 FROM arm32v7/node:10-slim
 
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     net-tools \
-    unzip
-
-RUN apt-get install -y \
+    unzip \
+    && apt-get install -y --no-install-recommends \
     libgstreamer1.0 \
     gstreamer1.0-plugins-base \
     gstreamer1.0-plugins-good \
     gstreamer1.0-libav \
-    gstreamer1.0-tools
-
-RUN rm -rf /var/lib/apt/lists/*
+    gstreamer1.0-tools \
+    && rm -rf /var/lib/apt/lists/*
 
 ENV WORKINGDIR /app
 WORKDIR ${WORKINGDIR}

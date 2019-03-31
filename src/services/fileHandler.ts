@@ -24,16 +24,24 @@ export class FileHandlerService {
 
     private fileUploadFolder: string = defaultFileUploadFolder;
     private unzipCommand: string = defaultUnzipCommand;
-    private fileUploadPath: string = '/data/misc/storage';
-    private modelFilesDirectory: string = '/data/misc/camera';
+    private storageFolderPath: string = '/data/misc/storage';
+    private modelFolderPath: string = '/data/misc/camera';
+
+    public get currentStorageFolderPath() {
+        return this.storageFolderPath;
+    }
+
+    public get currentModelFolderPath() {
+        return this.modelFolderPath;
+    }
 
     public async init(): Promise<void> {
         this.logger.log(['FileHandler', 'info'], 'initialize');
 
         this.fileUploadFolder = this.config.get('fileUploadFolder') || defaultFileUploadFolder;
         this.unzipCommand = this.config.get('unzipCommand') || defaultUnzipCommand;
-        this.fileUploadPath = pathJoin((this.server.settings.app as any).peabodyDirectory, this.fileUploadFolder);
-        this.modelFilesDirectory = pathJoin((this.server.settings.app as any).peabodyDirectory, 'camera');
+        this.storageFolderPath = pathJoin((this.server.settings.app as any).peabodyDirectory, this.fileUploadFolder);
+        this.modelFolderPath = pathJoin((this.server.settings.app as any).peabodyDirectory, 'camera');
     }
 
     public async uploadAndVerifyModelFiles(file: any): Promise<boolean> {
@@ -57,17 +65,17 @@ export class FileHandlerService {
     public async changeModelFiles(file: any): Promise<boolean> {
         const sourceFileName = file.hapi.filename;
         const destFileName = sourceFileName;
-        const destFilePath = `${this.fileUploadPath}/${destFileName}`;
+        const destFilePath = `${this.storageFolderPath}/${destFileName}`;
         const destUnzipDir = destFilePath.slice(0, -4);
 
         try {
-            this.logger.log(['FileHandler', 'info'], `Cleaning models directory: ${this.modelFilesDirectory}`);
-            await promisify(exec)(`rm -f ${this.modelFilesDirectory}/*`);
+            this.logger.log(['FileHandler', 'info'], `Cleaning models folder: ${this.modelFolderPath}`);
+            await promisify(exec)(`rm -f ${this.modelFolderPath}/*`);
 
             this.logger.log(['FileHandler', 'info'], `Copying new model files from: ${destUnzipDir}`);
-            await promisify(exec)(`cp -R ${destUnzipDir}/* ${this.modelFilesDirectory}`);
+            await promisify(exec)(`cp -R ${destUnzipDir}/* ${this.modelFolderPath}`);
 
-            this.logger.log(['FileHandler', 'info'], `Removing unzipped model directory: ${destUnzipDir}`);
+            this.logger.log(['FileHandler', 'info'], `Removing unzipped model folder: ${destUnzipDir}`);
             await promisify(exec)(`rm -rf ${destUnzipDir}`);
 
             return true;
@@ -79,25 +87,40 @@ export class FileHandlerService {
         return false;
     }
 
-    public async retrieveModelFiles() {
+    public async ensureModelFilesExist(modelFolder: string): Promise<any> {
+        this.logger.log(['FileHandler', 'info'], `Verifying .dlc file exists in: ${modelFolder}`);
+
         try {
-            const cameraDirectory = pathJoin((this.server.settings.app as any).peabodyDirectory, 'camera');
+            let dlcExists = false;
+            let result = [];
+            const modelFiles = await fse.readdir(modelFolder);
+            if (modelFiles) {
+                result = modelFiles.map((file) => {
+                    if (file.slice(-4) === '.dlc') {
+                        dlcExists = true;
+                    }
+                });
+            }
 
-            this.logger.log(['FileHandler', 'info'], `Looking for model files in: ${cameraDirectory}`);
-
-            return fse.readdir(cameraDirectory);
+            return {
+                dlcExists,
+                modelFiles: dlcExists ? result : []
+            };
         }
         catch (ex) {
             this.logger.log(['FileHandler', 'error'], `Error enumerating model files: ${ex.message}`);
-
-            return ['\u00a0', '\u00a0', '\u00a0', '\u00a0'];
         }
+
+        return {
+            dlcExists: false,
+            modelFiles: []
+        };
     }
 
     private async saveModelPackage(file: any): Promise<boolean> {
         const sourceFileName = file.hapi.filename;
         const destFileName = sourceFileName;
-        const destFilePath = `${this.fileUploadPath}/${destFileName}`;
+        const destFilePath = `${this.storageFolderPath}/${destFileName}`;
 
         const contentType = _get(file, 'hapi.headers.content-type');
         if (contentType !== 'application/zip') {
@@ -138,7 +161,7 @@ export class FileHandlerService {
     private async extractAndVerifyModelFiles(file: any): Promise<boolean> {
         const sourceFileName = file.hapi.filename;
         const destFileName = sourceFileName;
-        const destFilePath = `${this.fileUploadPath}/${destFileName}`;
+        const destFilePath = `${this.storageFolderPath}/${destFileName}`;
         const destUnzipDir = destFilePath.slice(0, -4);
 
         try {
@@ -157,16 +180,9 @@ export class FileHandlerService {
             await promisify(exec)(`rm -f ${destFilePath}`);
 
             this.logger.log(['FileHandler', 'info'], `Verifying .dlc file exists in: ${destUnzipDir}`);
-            let dlcExists = false;
-            const unzipFiles = await fse.readdir(destUnzipDir);
-            for (const unzipFile of unzipFiles) {
-                if (unzipFile.slice(-4) === '.dlc') {
-                    dlcExists = true;
-                    break;
-                }
-            }
+            const ensureResult = await this.ensureModelFilesExist(destUnzipDir);
 
-            return dlcExists;
+            return ensureResult.dlcExists;
         }
         catch (ex) {
             this.logger.log(['FileHandler', 'error'], `Error extracting files: ${ex.message}`);

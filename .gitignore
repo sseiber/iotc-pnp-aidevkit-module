@@ -50,9 +50,6 @@ typings/
 # Optional REPL history
 .node_repl_history
 
-# VS
-configs/*local.json
-
 # Output of 'npm pack'
 *.tgz
 
@@ -83,3 +80,4 @@ coverage.html
 storage
 peabody
 configs/**
+assets/**

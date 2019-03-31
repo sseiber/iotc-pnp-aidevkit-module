@@ -32,7 +32,6 @@ async function start() {
 
     try {
         const server = await compose(manifest(config), composeOptions);
-        (server.settings.app as any).compositionDone = 'done';
 
         server.log(['startup', 'info'], `🚀 Starting HAPI server instance...`);
 

@@ -1,12 +1,23 @@
 # AI Dev Kit local service
-This is the service to run locally on device. This is a REST micro-service that interfaces with the Snapdragon SNPE IPCProvider on the backend and serves up a React web client for the user experience (see the companion project) on the front end.
+This project is the *local service* compontent of a web client interface for the AI Vision Dev Kit. See the companion *[peabody-local-client](https://github.com/sseiber/peabody-local-client)* project for the web client source code.
+
+This component is a REST micro-service that runs locally on device. It interfaces with the Snapdragon SNPE IPCProvider on the backend and serves up a React web client for the user experience on the frontend.
+
+The project includes a Dockerfile and scripts used to build the docker container.
 
 ## Dependencies
-  * arm32v7/alpine:3.9 (base image)
+  * Visual Studio Code (not exactly but you should really be using this excellent IDE)
   * NodeJS 10x (with NPM)
-  * GStreamer
+  * GStreamer (if you want to test locally without deploying to the camera - recommended)
 
-## Install and run locally on the device
+## Environment installation
+  * Clone this repository
+  * `npm i`
+  * Open VSCode on this folder
+
+## Prepare for debugging with VSCode
+### Since the AI Vision Dev Kit interface is REST we can run the web client/server experience locally on a development machine and still control the camera. This is a better developent cycle than building a Docker container and deploying over and over. In order to do what we have to make sure the local environment is configured properly.
+  * Create a folder named `peabody` in your project's root. This folder simulates the root folder on the device that parents the vision model folder.
   * Open a command window and use `adb shell` to connect to your AI Dev Kit
   * **[OPTIONAL IF YOU WANT TO PRECONFIGURE THE DEVICE]**
     * Place config file `<your-unique-hostname>-state.json` in a folder on the host named `/root/misc/storage` folder with the following data:  

@@ -186,7 +186,8 @@ export class CameraService extends EventEmitter {
         }
         else {
             try {
-                this.modelFiles = await this.fileHandler.retrieveModelFiles();
+                const ensureResult = await this.fileHandler.ensureModelFilesExist(this.fileHandler.currentModelFolderPath);
+                this.modelFiles = ensureResult.modelFiles;
 
                 return {
                     status: true,
@@ -233,7 +234,7 @@ export class CameraService extends EventEmitter {
             }
 
             if (status) {
-                status  = await this.fileHandler.changeModelFiles(file);
+                status = await this.fileHandler.changeModelFiles(file);
             }
 
             if (status) {
@@ -379,33 +380,36 @@ export class CameraService extends EventEmitter {
             }
 
             if (result === true) {
-                this.logger.log(['CameraService', 'info'], `Turning on VAM`);
+                const ensureResult = await this.fileHandler.ensureModelFilesExist(this.fileHandler.currentModelFolderPath);
+                if (ensureResult.dlcExists) {
+                    this.logger.log(['CameraService', 'info'], `Turning on VAM`);
 
-                result = await this.ipcPostRequest('/vam', { switchStatus: true, vamconfig: 'MD' });
-            }
+                    result = await this.ipcPostRequest('/vam', { switchStatus: true, vamconfig: 'MD' });
 
-            if (result === true) {
-                this.logger.log(['CameraService', 'info'], `Retrieving RTSP VAM url`);
+                    if (result === true) {
+                        this.logger.log(['CameraService', 'info'], `Retrieving RTSP VAM url`);
 
-                result = await this.getRtspVamUrl();
-            }
+                        result = await this.getRtspVamUrl();
+                    }
 
-            if (result === true) {
-                this.logger.log(['CameraService', 'info'], `Starting data stream processor`);
+                    if (result === true) {
+                        this.logger.log(['CameraService', 'info'], `Starting data stream processor`);
 
-                result = await this.dataStreamController.startDataStreamProcessor(this.vamUrl);
-            }
+                        result = await this.dataStreamController.startDataStreamProcessor(this.vamUrl);
+                    }
 
-            if (result === true) {
-                this.logger.log(['CameraService', 'info'], `Configuring inference overlay`);
+                    if (result === true) {
+                        this.logger.log(['CameraService', 'info'], `Configuring inference overlay`);
 
-                result = await this.configureOverlay('inference');
-            }
+                        result = await this.configureOverlay('inference');
+                    }
 
-            if (result === true) {
-                this.logger.log(['CameraService', 'info'], `Turning on inference overlay`);
+                    if (result === true) {
+                        this.logger.log(['CameraService', 'info'], `Turning on inference overlay`);
 
-                result = await this.ipcPostRequest('/overlay', { switchStatus: true });
+                        result = await this.ipcPostRequest('/overlay', { switchStatus: true });
+                    }
+                }
             }
 
             return result;
