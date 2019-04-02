@@ -1,4 +1,4 @@
-import { service, inject } from '@sseiber/sprightly';
+import { service, inject } from 'spryly';
 import * as request from 'request';
 import * as _get from 'lodash.get';
 import * as crypto from 'crypto';

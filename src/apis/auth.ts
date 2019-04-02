@@ -1,4 +1,4 @@
-import { inject, RoutePlugin, route } from '@sseiber/sprightly';
+import { inject, RoutePlugin, route } from 'spryly';
 import { Request, ResponseToolkit } from 'hapi';
 import { AuthService } from '../services/auth';
 import * as Boom from 'boom';

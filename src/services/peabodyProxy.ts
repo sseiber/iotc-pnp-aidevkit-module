@@ -1,4 +1,4 @@
-import { service, inject } from '@sseiber/sprightly';
+import { service, inject } from 'spryly';
 import { LoggingService } from './logging';
 import { ConfigService } from './config';
 import * as _defaults from 'lodash.defaults';

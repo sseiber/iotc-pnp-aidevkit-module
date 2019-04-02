@@ -1,4 +1,4 @@
-import { HapiPlugin, inject } from '@sseiber/sprightly';
+import { HapiPlugin, inject } from 'spryly';
 import { Server } from 'hapi';
 import { LoggingService } from '../services/logging';
 import { ConfigService } from '../services/config';

@@ -1,4 +1,4 @@
-import { service, inject } from '@sseiber/sprightly';
+import { service, inject } from 'spryly';
 import { Request, ResponseToolkit } from 'hapi';
 import { LoggingService } from './logging';
 import { StorageService } from './storage';

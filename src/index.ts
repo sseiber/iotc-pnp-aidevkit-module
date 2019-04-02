@@ -1,5 +1,5 @@
 import { manifest } from './manifest';
-import { compose, ComposeOptions } from '@sseiber/sprightly';
+import { compose, ComposeOptions } from 'spryly';
 import {
     platform as osPlatform,
     cpus as osCpus,

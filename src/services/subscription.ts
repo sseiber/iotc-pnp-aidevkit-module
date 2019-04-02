@@ -1,4 +1,4 @@
-import { inject, service } from '@sseiber/sprightly';
+import { inject, service } from 'spryly';
 import { Server } from 'hapi';
 
 @service('subscription')

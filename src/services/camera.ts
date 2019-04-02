@@ -1,4 +1,4 @@
-import { service, inject } from '@sseiber/sprightly';
+import { service, inject } from 'spryly';
 import { Server } from 'hapi';
 import * as request from 'request';
 import { EventEmitter } from 'events';
@@ -17,7 +17,6 @@ const defaultencodeModeSelectVal: number = 1;
 const defaultbitRateSelectVal: number = 3;
 const defaultfpsSelectVal: number = 1;
 const defaultMaxLoginAttempts: number = 3;
-const defaultDeviceName: string = 'Peabody';
 const defaultRtspVideoPort: string = '8900';
 const defaultIpcPort: string = '1080';
 
@@ -38,7 +37,6 @@ export class CameraService extends EventEmitter {
     @inject('dataStreamController')
     private dataStreamController: DataStreamController;
 
-    private deviceName: string = defaultDeviceName;
     private maxLoginAttempts: number = defaultMaxLoginAttempts;
     private rtspVideoPort: string = defaultRtspVideoPort;
     private ipAddresses: any = {
@@ -85,7 +83,6 @@ export class CameraService extends EventEmitter {
         this.logger.log(['CameraService', 'info'], 'initialize');
 
         this.maxLoginAttempts = this.config.get('maxLoginAttemps') || defaultMaxLoginAttempts;
-        this.deviceName = this.config.get('deviceName') || defaultDeviceName;
         this.rtspVideoPort = this.config.get('rtspVideoPort') || defaultRtspVideoPort;
         this.ipcPort = this.config.get('ipcPort') || defaultIpcPort;
 
@@ -116,28 +113,31 @@ export class CameraService extends EventEmitter {
             if (status === true) {
                 status = await this.initializeCamera();
             }
-
-            if (status === true) {
-                const response = await this.getConfiguration();
-                status = response.status;
-            }
         }
         catch (ex) {
             this.logger.log(['CameraService', 'error'], ex.message);
         }
-        finally {
-            if (status === false && this.sessionToken) {
-                this.logger.log(['CameraService', 'error'], `Error during initialization, logging out`);
 
-                await this.logout();
-            }
+        if (status === false) {
+            this.logger.log(['CameraService', 'error'], `Error during initialization, logging out`);
+
+            const result = await this.logout();
+            return {
+                ...result,
+                status: false,
+                title: 'Login',
+                message: `An error occurred while creating a new camera session. Try rebooting the device and login again.`
+            };
         }
-
-        return {
-            status,
-            title: 'Login',
-            message: status ? 'Succeeded' : `An error occurred while trying to log into the ${this.deviceName} device. Try rebooting the device and login again.`
-        };
+        else {
+            const result = await this.getConfiguration();
+            return {
+                ...result,
+                status: true,
+                title: 'Login',
+                message: `Succeeded`
+            };
+        }
     }
 
     public async logout(): Promise<ICameraResult> {
@@ -168,58 +168,42 @@ export class CameraService extends EventEmitter {
             status = false;
         }
 
-        return {
-            status,
-            title: 'Logoff',
-            message: status ? 'Succeeded' : `The attempt to log out of the ${this.deviceName} device didn't complete successfully. Try rebooting the device and login again.`
-        };
+        return this.getConfiguration();
     }
 
     public async getConfiguration(): Promise<ICameraResult> {
-        if (!this.sessionToken) {
-            return {
-                status: true,
-                title: 'Camera',
-                message: `A valid session is required to retrieve camera configuration settings. Try logging in first.`,
-                body: {}
-            };
-        }
-        else {
-            try {
-                const ensureResult = await this.fileHandler.ensureModelFilesExist(this.fileHandler.currentModelFolderPath);
-                this.modelFiles = ensureResult.modelFiles;
+        let status = false;
 
-                return {
-                    status: true,
-                    title: 'Camera',
-                    message: 'Succeeded',
-                    body: {
-                        sessionToken: this.sessionToken,
-                        ipAddresses: this.ipAddresses,
-                        rtspUrl: `rtsp://${this.ipAddresses.cameraIpAddress}:${this.rtspVideoPort}/live`,
-                        vamUrl: this.vamUrl,
-                        resolution: this.resolutions[this.videoSettings.resolutionSelectVal],
-                        resolutions: this.resolutions,
-                        encoder: this.encoders[this.videoSettings.encodeModeSelectVal],
-                        encoders: this.encoders,
-                        bitRate: this.bitRates[this.videoSettings.bitRateSelectVal],
-                        bitRates: this.bitRates,
-                        frameRate: this.frameRates[this.videoSettings.fpsSelectVal],
-                        frameRates: this.frameRates,
-                        modelFiles: this.modelFiles
-                    }
-                };
-            }
-            catch (ex) {
-                this.logger.log(['CameraService', 'error'], ex.message);
+        try {
+            const ensureResult = await this.fileHandler.ensureModelFilesExist(this.fileHandler.currentModelFolderPath);
+            this.modelFiles = ensureResult.modelFiles;
 
-                return {
-                    status: false,
-                    title: 'Camera',
-                    message: `An error occurred while trying to get configuration settings from the ${this.deviceName} device.`
-                };
-            }
+            status = true;
         }
+        catch (ex) {
+            this.logger.log(['CameraService', 'error'], ex.message);
+        }
+
+        return {
+            status,
+            title: 'Camera',
+            message: status ? 'Succeeded' : `An error occurred while retrieving the camera settings.`,
+            body: {
+                sessionToken: this.sessionToken,
+                ipAddresses: this.ipAddresses,
+                rtspUrl: this.sessionToken ? `rtsp://${this.ipAddresses.cameraIpAddress}:${this.rtspVideoPort}/live` : '',
+                vamUrl: this.sessionToken ? this.vamUrl : '',
+                resolution: this.sessionToken ? this.resolutions[this.videoSettings.resolutionSelectVal] : '',
+                resolutions: this.resolutions,
+                encoder: this.sessionToken ? this.encoders[this.videoSettings.encodeModeSelectVal] : '',
+                encoders: this.encoders,
+                bitRate: this.sessionToken ? this.bitRates[this.videoSettings.bitRateSelectVal] : '',
+                bitRates: this.bitRates,
+                frameRate: this.sessionToken ? this.frameRates[this.videoSettings.fpsSelectVal] : '',
+                frameRates: this.frameRates,
+                modelFiles: this.modelFiles
+            }
+        };
     }
 
     public async changeModel(file: any): Promise<ICameraResult> {
@@ -625,7 +609,7 @@ export class CameraService extends EventEmitter {
     private async makeRequest(options): Promise<any> {
         return new Promise((resolve, reject) => {
             request({
-                timeout: 10000,
+                timeout: 15000,
                 ...options
             }, (requestError, response, body) => {
                 if (requestError) {

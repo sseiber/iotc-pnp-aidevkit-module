@@ -1,4 +1,4 @@
-import { inject, service } from '@sseiber/sprightly';
+import { inject, service } from 'spryly';
 import { Server } from 'hapi';
 import { join as pathJoin } from 'path';
 import * as fse from 'fs-extra';
@@ -91,20 +91,15 @@ export class FileHandlerService {
         this.logger.log(['FileHandler', 'info'], `Verifying .dlc file exists in: ${modelFolder}`);
 
         try {
-            let dlcExists = false;
-            let result = [];
+            let dlcFile;
             const modelFiles = await fse.readdir(modelFolder);
             if (modelFiles) {
-                result = modelFiles.map((file) => {
-                    if (file.slice(-4) === '.dlc') {
-                        dlcExists = true;
-                    }
-                });
+                dlcFile = modelFiles.find(file => (file || '').slice(-4) === '.dlc');
             }
 
             return {
-                dlcExists,
-                modelFiles: dlcExists ? result : []
+                dlcExists: dlcFile ? true : false,
+                modelFiles: dlcFile ? modelFiles : []
             };
         }
         catch (ex) {

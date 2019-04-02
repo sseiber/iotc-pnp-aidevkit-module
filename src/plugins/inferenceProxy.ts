@@ -1,4 +1,4 @@
-import { HapiPlugin } from '@sseiber/sprightly';
+import { HapiPlugin } from 'spryly';
 import { Server } from 'hapi';
 import * as Nes from 'nes';
 

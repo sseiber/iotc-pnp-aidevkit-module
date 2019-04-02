@@ -1,4 +1,4 @@
-import { RoutePlugin, route } from '@sseiber/sprightly';
+import { RoutePlugin, route } from 'spryly';
 import { Request, ResponseToolkit } from 'hapi';
 import {
     dirname as pathDirname,

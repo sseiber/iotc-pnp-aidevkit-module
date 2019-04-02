@@ -1,4 +1,4 @@
-import { ComposeManifest } from '@sseiber/sprightly';
+import { ComposeManifest } from 'spryly';
 import { resolve as pathResolve } from 'path';
 
 const DefaultPort = 9010;

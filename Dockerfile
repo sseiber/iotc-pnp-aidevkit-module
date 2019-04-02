@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gstreamer1.0-plugins-good \
     gstreamer1.0-libav \
     gstreamer1.0-tools \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 ENV WORKINGDIR /app
@@ -20,7 +21,6 @@ ADD tslint.json ${WORKINGDIR}/tslint.json
 ADD tsconfig.json ${WORKINGDIR}/tsconfig.json
 ADD src ${WORKINGDIR}/src
 ADD client_dist ${WORKINGDIR}/client_dist
-ADD .npmrc ${WORKINGDIR}/.npmrc
 
 RUN npm install -q && \
     ./node_modules/.bin/tsc -p . && \

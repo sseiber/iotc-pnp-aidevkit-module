@@ -1,4 +1,4 @@
-import { service, inject } from '@sseiber/sprightly';
+import { service, inject } from 'spryly';
 import { spawn } from 'child_process';
 import { LoggingService } from './logging';
 import { SubscriptionService } from '../services/subscription';

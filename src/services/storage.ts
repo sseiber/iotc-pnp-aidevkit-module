@@ -1,5 +1,5 @@
 const ROOT = '__ROOT__';
-import { service, inject } from '@sseiber/sprightly';
+import { service, inject } from 'spryly';
 import { Server } from 'hapi';
 import { LoggingService } from './logging';
 import { promisify } from 'util';
