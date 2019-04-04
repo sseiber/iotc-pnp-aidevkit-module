@@ -11,6 +11,7 @@ import { LoggingService } from './logging';
 import { FileHandlerService } from './fileHandler';
 import { ICameraResult } from './peabodyTypes';
 import { DataStreamController } from './dataStreamProcessor';
+import { bind, sleep } from '../utils';
 
 const defaultresolutionSelectVal: number = 1;
 const defaultencodeModeSelectVal: number = 1;
@@ -86,11 +87,17 @@ export class CameraService extends EventEmitter {
         this.rtspVideoPort = this.config.get('rtspVideoPort') || defaultRtspVideoPort;
         this.ipcPort = this.config.get('ipcPort') || defaultIpcPort;
 
+        this.server.decorate('server', 'startCamera', this.startCamera);
+    }
+
+    @bind
+    public async startCamera(): Promise<void> {
         // ###
         // ### Need a way to reset services when a new image is deployed
         // ###
 
         // await this.resetCameraServices();
+
         await this.login();
     }
 
@@ -591,7 +598,7 @@ export class CameraService extends EventEmitter {
 
             const result = await this.makeRequest(options);
 
-            await this.sleep(250);
+            await sleep(250);
 
             this.logger.log(['ipcProvider', 'info'], `RESPONSE: ${JSON.stringify(_get(result, 'body'))}`);
 
@@ -632,14 +639,6 @@ export class CameraService extends EventEmitter {
         });
     }
 
-    private async sleep(milliseconds: number): Promise<void> {
-        return new Promise((resolve) => {
-            setTimeout(() => {
-                return resolve();
-            }, milliseconds);
-        });
-    }
-
     private async getWlanIp() {
         let cameraIpAddress = this.config.get('cameraIpAddress');
 
@@ -658,7 +657,7 @@ export class CameraService extends EventEmitter {
 
                 case 'linux':
                 default:
-                    ifConfigFilter = `ifconfig wlan0 | grep 'inet' | cut -d: -f2 | awk '{print $2}'`;
+                    ifConfigFilter = `ifconfig wlan0 | grep 'inet ' | cut -d: -f2 | awk '{print $1}'`;
                     break;
             }
 

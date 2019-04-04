@@ -1,4 +1,4 @@
-FROM arm32v7/node:10-slim
+FROM iotccrscotts.azurecr.io/opencvnode-base-arm32v7:1.0.1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     net-tools \
