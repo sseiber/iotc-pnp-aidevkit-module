@@ -25,10 +25,8 @@
                 "NODE_ENV": "local",
                 "PORT": "9010",
                 "LOCAL_DEBUG": "1",
-                "user": "admin",
-                "password": "admin",
-                "cameraIpAddress2": "192.168.1.77",
-                "cameraIpAddress": "192.168.86.26",
+                "cameraIpAddress": "192.168.1.77",
+                "cameraIpAddress2": "192.168.86.26",
                 "hostIpAddress": "localhost",
                 "PEABODY_STORAGE": "${workspaceFolder}/peabody"
             }

@@ -24,17 +24,17 @@ export class InferenceProcessorService {
                     + `"${_get(inferenceItem, 'display_name')}" `
                     + `${_get(inferenceItem, 'confidence')}% `);
             }
-        }
 
-        this.publishInference({
-            timestamp: inference.timestamp,
-            objects: inference.objects.map((object) => {
-                return {
-                    count: this.inferenceCount++,
-                    ...object
-                }
-            })
-        });
+            this.publishInference({
+                timestamp: inference.timestamp,
+                objects: inference.objects.map((object) => {
+                    return {
+                        count: this.inferenceCount++,
+                        ...object
+                    }
+                })
+            });
+        }
     }
 
     public handleVideoFrame(imageData: Buffer) {

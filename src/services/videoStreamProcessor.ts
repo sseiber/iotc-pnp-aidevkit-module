@@ -57,8 +57,6 @@ export class VideoStreamController {
             const frameProcessor = new FrameProcessor({});
 
             frameProcessor.on('jpeg', async (jpegData: any) => {
-                this.logger.log(['videoController', 'info'], `Sending JPEG`);
-
                 this.inferenceProcessor.handleVideoFrame(jpegData);
             });
 

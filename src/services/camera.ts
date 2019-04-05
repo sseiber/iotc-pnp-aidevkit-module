@@ -508,8 +508,8 @@ export class CameraService extends EventEmitter {
                 url: `http://${this.ipAddresses.cameraIpAddress}:${this.ipcPort}/login`,
                 json: true,
                 body: {
-                    username: this.config.get('user'),
-                    userpwd: this.config.get('password')
+                    username: this.config.get('cameraUsername'),
+                    userpwd: this.config.get('cameraPassword')
                 }
             };
 
