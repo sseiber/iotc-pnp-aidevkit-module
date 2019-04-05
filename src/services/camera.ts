@@ -11,12 +11,14 @@ import { LoggingService } from './logging';
 import { FileHandlerService } from './fileHandler';
 import { ICameraResult } from './peabodyTypes';
 import { DataStreamController } from './dataStreamProcessor';
+import { VideoStreamController } from './videoStreamProcessor';
+import { bind, sleep } from '../utils';
 
 const defaultresolutionSelectVal: number = 1;
 const defaultencodeModeSelectVal: number = 1;
 const defaultbitRateSelectVal: number = 3;
 const defaultfpsSelectVal: number = 1;
-const defaultMaxLoginAttempts: number = 3;
+const defaultMaxLoginAttempts: number = 4;
 const defaultRtspVideoPort: string = '8900';
 const defaultIpcPort: string = '1080';
 
@@ -36,6 +38,9 @@ export class CameraService extends EventEmitter {
 
     @inject('dataStreamController')
     private dataStreamController: DataStreamController;
+
+    @inject('videoStreamController')
+    private videoStreamController: VideoStreamController;
 
     private maxLoginAttempts: number = defaultMaxLoginAttempts;
     private rtspVideoPort: string = defaultRtspVideoPort;
@@ -86,11 +91,17 @@ export class CameraService extends EventEmitter {
         this.rtspVideoPort = this.config.get('rtspVideoPort') || defaultRtspVideoPort;
         this.ipcPort = this.config.get('ipcPort') || defaultIpcPort;
 
+        this.server.decorate('server', 'startCamera', this.startCamera);
+    }
+
+    @bind
+    public async startCamera(): Promise<void> {
         // ###
         // ### Need a way to reset services when a new image is deployed
         // ###
 
         // await this.resetCameraServices();
+
         await this.login();
     }
 
@@ -144,6 +155,7 @@ export class CameraService extends EventEmitter {
         let status = false;
 
         try {
+            this.videoStreamController.stopVideoStreamProcessor();
             this.dataStreamController.stopDataStreamProcessor();
 
             for (let iLogoutAttempts = 0; status === false && iLogoutAttempts < 3; ++iLogoutAttempts) {
@@ -311,7 +323,7 @@ export class CameraService extends EventEmitter {
         }
     }
 
-    public configureOverlay(type: string, text?: string): Promise<boolean> {
+    public async configureOverlay(type: string, text?: string): Promise<boolean> {
         if (type === 'inference') {
             return this.configureInferenceOverlay();
         }
@@ -321,6 +333,10 @@ export class CameraService extends EventEmitter {
 
         this.logger.log(['CameraService', 'error'], 'Invalid overlay type use (inference/text)');
         return Promise.resolve(false);
+    }
+
+    public async captureImage(): Promise<any> {
+        return this.ipcPostRequest('/captureimage', {});
     }
 
     private async initializeCamera(): Promise<boolean> {
@@ -360,7 +376,7 @@ export class CameraService extends EventEmitter {
             if (result === true) {
                 this.logger.log(['CameraService', 'info'], `Turning on preview`);
 
-                result = await await this.ipcPostRequest('/preview', { switchStatus: true });
+                result = await this.ipcPostRequest('/preview', { switchStatus: true });
             }
 
             if (result === true) {
@@ -377,12 +393,6 @@ export class CameraService extends EventEmitter {
                     }
 
                     if (result === true) {
-                        this.logger.log(['CameraService', 'info'], `Starting data stream processor`);
-
-                        result = await this.dataStreamController.startDataStreamProcessor(this.vamUrl);
-                    }
-
-                    if (result === true) {
                         this.logger.log(['CameraService', 'info'], `Configuring inference overlay`);
 
                         result = await this.configureOverlay('inference');
@@ -392,6 +402,16 @@ export class CameraService extends EventEmitter {
                         this.logger.log(['CameraService', 'info'], `Turning on inference overlay`);
 
                         result = await this.ipcPostRequest('/overlay', { switchStatus: true });
+                    }
+
+                    if (result === true) {
+                        this.logger.log(['CameraService', 'info'], `Starting video stream processor`);
+
+                        result = await this.dataStreamController.startDataStreamProcessor(this.vamUrl);
+
+                        if (result === true) {
+                            result = await this.videoStreamController.startVideoStreamProcessor(`rtsp://${this.ipAddresses.cameraIpAddress}:${this.rtspVideoPort}/live`);
+                        }
                     }
                 }
             }
@@ -488,8 +508,8 @@ export class CameraService extends EventEmitter {
                 url: `http://${this.ipAddresses.cameraIpAddress}:${this.ipcPort}/login`,
                 json: true,
                 body: {
-                    username: this.config.get('user'),
-                    userpwd: this.config.get('password')
+                    username: this.config.get('cameraUsername'),
+                    userpwd: this.config.get('cameraPassword')
                 }
             };
 
@@ -591,7 +611,7 @@ export class CameraService extends EventEmitter {
 
             const result = await this.makeRequest(options);
 
-            await this.sleep(250);
+            await sleep(250);
 
             this.logger.log(['ipcProvider', 'info'], `RESPONSE: ${JSON.stringify(_get(result, 'body'))}`);
 
@@ -609,7 +629,7 @@ export class CameraService extends EventEmitter {
     private async makeRequest(options): Promise<any> {
         return new Promise((resolve, reject) => {
             request({
-                timeout: 15000,
+                timeout: 10000,
                 ...options
             }, (requestError, response, body) => {
                 if (requestError) {
@@ -632,14 +652,6 @@ export class CameraService extends EventEmitter {
         });
     }
 
-    private async sleep(milliseconds: number): Promise<void> {
-        return new Promise((resolve) => {
-            setTimeout(() => {
-                return resolve();
-            }, milliseconds);
-        });
-    }
-
     private async getWlanIp() {
         let cameraIpAddress = this.config.get('cameraIpAddress');
 
@@ -658,7 +670,7 @@ export class CameraService extends EventEmitter {
 
                 case 'linux':
                 default:
-                    ifConfigFilter = `ifconfig wlan0 | grep 'inet' | cut -d: -f2 | awk '{print $2}'`;
+                    ifConfigFilter = `ifconfig wlan0 | grep 'inet ' | cut -d: -f2 | awk '{print $1}'`;
                     break;
             }
 

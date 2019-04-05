@@ -1,12 +1,16 @@
 import { inject, RoutePlugin, route } from 'spryly';
 import { Request, ResponseToolkit } from 'hapi';
 import { CameraService } from '../services/camera';
+import { IoTCentralService } from '../services/iotcentral';
 import * as Boom from 'boom';
 import * as _get from 'lodash.get';
 
 export class PeabodyRoutes extends RoutePlugin {
     @inject('camera')
     private camera: CameraService;
+
+    @inject('iotCentral')
+    private iotCentral: IoTCentralService;
 
     @route({
         method: 'POST',
@@ -266,6 +270,32 @@ export class PeabodyRoutes extends RoutePlugin {
             const result = await this.camera.getConfiguration();
 
             return h.response(result).code(200);
+        }
+        catch (ex) {
+            throw Boom.badRequest(ex.message);
+        }
+    }
+
+    @route({
+        method: 'POST',
+        path: '/api/v1/peabody/dps',
+        options: {
+            auth: {
+                strategies: ['peabody-jwt', 'peabody-localnetwork'],
+                access: {
+                    scope: ['api-client', 'admin']
+                }
+            },
+            tags: ['peabody'],
+            description: 'Provision this device with IoT Central'
+        }
+    })
+    // @ts-ignore (request)
+    public async postDpsProvision(request: Request, h: ResponseToolkit) {
+        try {
+            await this.iotCentral.iotCentralDpsProvisionDevice();
+
+            return h.response().code(201);
         }
         catch (ex) {
             throw Boom.badRequest(ex.message);

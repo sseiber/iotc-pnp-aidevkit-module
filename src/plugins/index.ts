@@ -1,10 +1,10 @@
 
 import { AuthPlugin } from './auth';
-import { InferenceProxyPlugin } from './inferenceProxy';
+import { InferenceProcessorPlugin } from './inferenceProcessor';
 // import { PeabodyProxyPlugin } from './peabodyProxy';
 
 export default [
     AuthPlugin,
-    InferenceProxyPlugin
+    InferenceProcessorPlugin
     // PeabodyProxyPlugin
 ];

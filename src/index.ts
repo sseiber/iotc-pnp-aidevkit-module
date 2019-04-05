@@ -44,7 +44,13 @@ async function start() {
         server.log(['startup', 'info'], ` > Machine: ${osPlatform()}, ${osCpus().length} core, ` +
             `freemem=${(osFreeMem() / 1024 / 1024).toFixed(0)}mb, totalmem=${(osTotalMem() / 1024 / 1024).toFixed(0)}mb`);
 
+        server.log(['startup', 'info'], `✅ Server starting camera initialzation`);
+
+        await (server as any).startCamera();
+
         server.publish(`/api/v1/subscription/up`, {});
+
+        server.log(['startup', 'info'], `✅ Server finished camera initialization`);
     }
     catch (error) {
         // tslint:disable-next-line:no-console

@@ -1,8 +1,7 @@
 import { service, inject } from 'spryly';
 import { spawn } from 'child_process';
 import { LoggingService } from './logging';
-import { SubscriptionService } from '../services/subscription';
-import * as _get from 'lodash.get';
+import { InferenceProcessorService } from './inferenceProcessor';
 import { Transform } from 'stream';
 
 const gstCommand = 'gst-launch-1.0';
@@ -13,8 +12,8 @@ export class DataStreamController {
     @inject('logger')
     private logger: LoggingService;
 
-    @inject('subscription')
-    private subscription: SubscriptionService;
+    @inject('inferenceProcessor')
+    private inferenceProcessor: InferenceProcessorService;
 
     private gstProcess = null;
 
@@ -37,20 +36,7 @@ export class DataStreamController {
             const frameProcessor = new FrameProcessor({});
 
             frameProcessor.on('inference', async (inference: any) => {
-                const inferences = _get(inference, 'objects');
-                if (inferences && Array.isArray(inferences)) {
-                    for (const inferenceItem of inferences) {
-                        this.logger.log(['DataStreamController', 'info'], `Inference: `
-                            + `id:${_get(inferenceItem, 'id')} `
-                            + `"${_get(inferenceItem, 'display_name')}" `
-                            + `${_get(inferenceItem, 'confidence')}% `);
-
-                        this.subscription.publishInference({
-                            timestamp: inference.timestamp,
-                            ...inferenceItem
-                        });
-                    }
-                }
+                this.inferenceProcessor.handleDataInference(inference);
             });
 
             this.gstProcess.stdout.pipe(frameProcessor);
@@ -146,7 +132,7 @@ class FrameProcessor extends Transform {
         }
         catch (ex) {
             // tslint:disable no-console variable-name
-            console.log(`##Parse exception: ${inferenceTextData}`);
+            console.log(`##Inference parse exception: ${inferenceTextData}`);
 
             // tslint:disable no-console variable-name
             console.log(`##Raw: ${chunkString}`);

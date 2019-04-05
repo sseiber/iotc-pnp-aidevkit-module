@@ -2,7 +2,7 @@ import { HapiPlugin } from 'spryly';
 import { Server } from 'hapi';
 import * as Nes from 'nes';
 
-export class InferenceProxyPlugin implements HapiPlugin {
+export class InferenceProcessorPlugin implements HapiPlugin {
     public async register(server: Server) {
         await server.register(Nes);
 

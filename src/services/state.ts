@@ -49,6 +49,32 @@ export class StateService {
         return this.stateInternal.registration.systemId;
     }
 
+    public get deviceId(): string {
+        return this.stateInternal.registration.deviceId || '';
+    }
+
+    public get scopeId(): string {
+        return this.stateInternal.registration.scopeId || '';
+    }
+
+    public get deviceKey(): string {
+        return this.stateInternal.registration.deviceKey || '';
+    }
+
+    public get templateId(): string {
+        return this.stateInternal.registration.templateId || '';
+    }
+
+    public get ioTCentralHubConnectionString(): string {
+        return this.stateInternal.registration.ioTCentralHubConnectionString || '';
+    }
+
+    public async setIoTCentralHubConnectionString(connectionString: string) {
+        this.stateInternal.registration.ioTCentralHubConnectionString = connectionString;
+
+        await this.flushState();
+    }
+
     private async loadState() {
         try {
             this.stateInternal = await this.storage.get(this.stateFile);
