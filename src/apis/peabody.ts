@@ -276,7 +276,6 @@ export class PeabodyRoutes extends RoutePlugin {
         }
     }
 
-
     @route({
         method: 'POST',
         path: '/api/v1/peabody/dps',

@@ -8,7 +8,9 @@ import { FileHandlerService } from './fileHandler';
 import { SubscriptionService } from './subscription';
 import { PeabodyProxyService } from './peabodyProxy';
 import { CameraService } from './camera';
+import { InferenceProcessorService } from './inferenceProcessor';
 import { DataStreamController } from './dataStreamProcessor';
+import { VideoStreamController } from './videoStreamProcessor';
 import { IoTCentralService } from './iotcentral';
 
 export default [
@@ -21,6 +23,8 @@ export default [
     SubscriptionService,
     PeabodyProxyService,
     CameraService,
+    InferenceProcessorService,
     DataStreamController,
+    VideoStreamController,
     IoTCentralService
 ];

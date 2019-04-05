@@ -56,7 +56,7 @@ export class IoTCentralService {
             this.logger.log(['IoTCentralService', 'info'], `IoT Central dps request succeeded - waiting for hub assignment`);
 
             delete options.body;
-            options.method = 'GET'
+            options.method = 'GET';
             options.url = this.config.get('iotCentralDpsEndpoint').replace('###SCOPEID', this.state.scopeId).replace('###DEVICEID', this.state.deviceId)
                 + this.config.get('iotCentralDpsOperationsSuffix').replace('###OPERATION_ID', operationId).replace('###API_VERSION', this.config.get('iotCentralDpsAssigningApiVersion'));
 
