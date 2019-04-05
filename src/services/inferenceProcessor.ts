@@ -31,7 +31,7 @@ export class InferenceProcessorService {
                     return {
                         count: this.inferenceCount++,
                         ...object
-                    }
+                    };
                 })
             });
         }
