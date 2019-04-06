@@ -14,6 +14,8 @@ import { DataStreamController } from './dataStreamProcessor';
 import { VideoStreamController } from './videoStreamProcessor';
 import { bind, sleep } from '../utils';
 
+const defaultCameraUsername: string = 'admin';
+const defaultCameraPassword: string = 'admin';
 const defaultresolutionSelectVal: number = 1;
 const defaultencodeModeSelectVal: number = 1;
 const defaultbitRateSelectVal: number = 3;
@@ -42,6 +44,8 @@ export class CameraService extends EventEmitter {
     @inject('videoStreamController')
     private videoStreamController: VideoStreamController;
 
+    private cameraUserName: string = defaultCameraUsername;
+    private cameraPassword: string = defaultCameraPassword;
     private maxLoginAttempts: number = defaultMaxLoginAttempts;
     private rtspVideoPort: string = defaultRtspVideoPort;
     private ipAddresses: any = {
@@ -87,6 +91,8 @@ export class CameraService extends EventEmitter {
     public async init(): Promise<void> {
         this.logger.log(['CameraService', 'info'], 'initialize');
 
+        this.cameraUserName = this.config.get('cameraUsername') || defaultCameraUsername;
+        this.cameraPassword = this.config.get('cameraPassword') || defaultCameraPassword;
         this.maxLoginAttempts = this.config.get('maxLoginAttemps') || defaultMaxLoginAttempts;
         this.rtspVideoPort = this.config.get('rtspVideoPort') || defaultRtspVideoPort;
         this.ipcPort = this.config.get('ipcPort') || defaultIpcPort;
@@ -508,8 +514,8 @@ export class CameraService extends EventEmitter {
                 url: `http://${this.ipAddresses.cameraIpAddress}:${this.ipcPort}/login`,
                 json: true,
                 body: {
-                    username: this.config.get('cameraUsername'),
-                    userpwd: this.config.get('cameraPassword')
+                    username: this.cameraUserName,
+                    userpwd: this.cameraPassword
                 }
             };
 
