@@ -2,34 +2,57 @@ import { service, inject } from 'spryly';
 import * as request from 'request';
 import * as _get from 'lodash.get';
 import * as crypto from 'crypto';
-import { ConfigService } from './config';
 import { LoggingService } from './logging';
+import { ConfigService } from './config';
 import { StateService } from './state';
 import { sleep } from '../utils';
 
 const SECONDS_PER_MINUTE: number = (60);
 const SECONDS_PER_HOUR: number = (60 * 60);
 
+const defaultIotCentralDpsProvisionApiVersion: string = '2019-01-15';
+const defaultIotCentralDpsAssigningApiVersion: string = '2018-11-01';
+const defaultIotCentralDpsEndpoint: string = 'https://global.azure-devices-provisioning.net/###SCOPEID/registrations/###DEVICEID';
+const defaultIotCentralDpsRegistrationSuffix: string = '/register?api-version=###API_VERSION';
+const defaultIotCentralDpsOperationsSuffix: string = '/operations/###OPERATION_ID?api-version=###API_VERSION';
+const defaultIotCentralExpiryHours: string = '2';
+
 @service('iotCentral')
 export class IoTCentralService {
-    @inject('config')
-    private config: ConfigService;
-
     @inject('logger')
     private logger: LoggingService;
+
+    @inject('config')
+    private config: ConfigService;
 
     @inject('state')
     private state: StateService;
 
+    private iotCentralDpsProvisionApiVersion: string = defaultIotCentralDpsProvisionApiVersion;
+    private iotCentralDpsAssigningApiVersion: string = defaultIotCentralDpsAssigningApiVersion;
+    private iotCentralDpsEndpoint: string = defaultIotCentralDpsEndpoint;
+    private iotCentralDpsRegistrationSuffix: string = defaultIotCentralDpsRegistrationSuffix;
+    private iotCentralDpsOperationsSuffix: string = defaultIotCentralDpsOperationsSuffix;
+    private iotCentralExpiryHours: string = defaultIotCentralExpiryHours;
+
+    public async init(): Promise<void> {
+        this.iotCentralDpsProvisionApiVersion = this.config.get('iotCentralDpsProvisionApiVersion') || defaultIotCentralDpsProvisionApiVersion;
+        this.iotCentralDpsAssigningApiVersion = this.config.get('iotCentralDpsAssigningApiVersion') || defaultIotCentralDpsAssigningApiVersion;
+        this.iotCentralDpsEndpoint = this.config.get('iotCentralDpsEndpoint') || defaultIotCentralDpsEndpoint;
+        this.iotCentralDpsRegistrationSuffix = this.config.get('iotCentralDpsRegistrationSuffix') || defaultIotCentralDpsRegistrationSuffix;
+        this.iotCentralDpsOperationsSuffix = this.config.get('iotCentralDpsOperationsSuffix') || defaultIotCentralDpsOperationsSuffix;
+        this.iotCentralExpiryHours = this.config.get('iotCentralExpiryHours') || defaultIotCentralExpiryHours;
+    }
+
     public async iotCentralDpsProvisionDevice(): Promise<boolean> {
-        const expiry = (Date.now() - (SECONDS_PER_MINUTE * 5) + (SECONDS_PER_HOUR * Number(this.config.get('iotCentralExpiryHours'))));
+        const expiry = (Date.now() - (SECONDS_PER_MINUTE * 5) + (SECONDS_PER_HOUR * Number(this.iotCentralExpiryHours)));
         const sr = `${this.state.scopeId}%2fregistrations%2f${this.state.deviceId}`;
         const sig = this.computDerivedSymmetricKey(this.state.deviceKey, `${sr}\n${expiry}`);
 
         const options = {
             method: 'PUT',
-            url: this.config.get('iotCentralDpsEndpoint').replace('###SCOPEID', this.state.scopeId).replace('###DEVICEID', this.state.deviceId)
-                + this.config.get('iotCentralDpsRegistrationSuffix').replace('###API_VERSION', this.config.get('iotCentralDpsProvisionApiVersion')),
+            url: this.iotCentralDpsEndpoint.replace('###SCOPEID', this.state.scopeId).replace('###DEVICEID', this.state.deviceId)
+                + this.iotCentralDpsRegistrationSuffix.replace('###API_VERSION', this.iotCentralDpsProvisionApiVersion),
             headers: {
                 'Accept': 'application/json',
                 'Content-Type': 'application/json; charset=utf-8',
@@ -57,8 +80,8 @@ export class IoTCentralService {
 
             delete options.body;
             options.method = 'GET';
-            options.url = this.config.get('iotCentralDpsEndpoint').replace('###SCOPEID', this.state.scopeId).replace('###DEVICEID', this.state.deviceId)
-                + this.config.get('iotCentralDpsOperationsSuffix').replace('###OPERATION_ID', operationId).replace('###API_VERSION', this.config.get('iotCentralDpsAssigningApiVersion'));
+            options.url = this.iotCentralDpsEndpoint.replace('###SCOPEID', this.state.scopeId).replace('###DEVICEID', this.state.deviceId)
+                + this.iotCentralDpsOperationsSuffix.replace('###OPERATION_ID', operationId).replace('###API_VERSION', this.iotCentralDpsAssigningApiVersion);
 
             const errorCode = _get(result, 'errorCode');
             if (errorCode) {

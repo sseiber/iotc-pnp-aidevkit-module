@@ -7,10 +7,12 @@ import * as _get from 'lodash.get';
 import { Transform } from 'stream';
 import { platform as osPlatform } from 'os';
 
+const rtspVideoCaptureSource = 'rtsp';
 const ffmpegCommand = 'ffmpeg';
 const ffmpegCaptureCommandArgsMac = '-f avfoundation -framerate 15 -video_device_index ###VIDEO_SOURCE -i default -loglevel quiet -an -f image2pipe -vf scale=640:360,fps=1/2 -q 1 pipe:1';
 const ffmpegCaptureCommandArgsLinux = '-f video4linux2 -i ###VIDEO_SOURCE -framerate 15 -loglevel quiet -an -image2pipe -vf scale=640:360,fps=1/2 -q 1 pipe:1';
-const ffmpegRtspCommandArgs = '-i ###VIDEO_SOURCE -loglevel quiet -an -f image2pipe -vf scale=640:360,fps=1/2 -q 1 pipe:1';
+// const ffmpegRtspCommandArgs = '-i ###VIDEO_SOURCE -loglevel quiet -an -f image2pipe -vf scale=640:360,fps=1/2 -q 1 pipe:1';
+const ffmpegRtspCommandArgs = '-i ###VIDEO_SOURCE -loglevel quiet -an -f image2pipe -vf fps=1/2 -q 1 pipe:1';
 
 @service('videoStreamController')
 export class VideoStreamController {
@@ -23,12 +25,15 @@ export class VideoStreamController {
     @inject('inferenceProcessor')
     private inferenceProcessor: InferenceProcessorService;
 
+    private videoCaptureSource: string = rtspVideoCaptureSource;
     private ffmpegProcess: any = null;
     private ffmpegCommandArgs: string = '';
 
     public async init(): Promise<void> {
+        this.videoCaptureSource = this.config.get('videoCaptureSource') || rtspVideoCaptureSource;
+
         // tslint:disable-next-line:prefer-conditional-expression
-        if (this.config.get('videoCaptureSource') === 'rtsp') {
+        if (this.videoCaptureSource === rtspVideoCaptureSource) {
             this.ffmpegCommandArgs = ffmpegRtspCommandArgs;
         }
         else {
