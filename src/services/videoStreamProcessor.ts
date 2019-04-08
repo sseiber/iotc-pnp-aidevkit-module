@@ -61,7 +61,7 @@ export class VideoStreamController {
 
             const frameProcessor = new FrameProcessor({});
 
-            frameProcessor.on('jpeg', async (jpegData: any) => {
+            frameProcessor.on('jpeg', (jpegData: any) => {
                 this.inferenceProcessor.handleVideoFrame(jpegData);
             });
 
@@ -69,8 +69,8 @@ export class VideoStreamController {
 
             return true;
         }
-        catch (e) {
-            this.logger.log(['videoController', 'error'], e.message);
+        catch (ex) {
+            this.logger.log(['videoController', 'error'], ex.message);
 
             return false;
         }

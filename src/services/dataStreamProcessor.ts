@@ -35,7 +35,7 @@ export class DataStreamController {
 
             const frameProcessor = new FrameProcessor({});
 
-            frameProcessor.on('inference', async (inference: any) => {
+            frameProcessor.on('inference', (inference: any) => {
                 this.inferenceProcessor.handleDataInference(inference);
             });
 

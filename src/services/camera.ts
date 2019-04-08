@@ -9,6 +9,7 @@ import { platform as osPlatform } from 'os';
 import { ConfigService } from './config';
 import { LoggingService } from './logging';
 import { FileHandlerService } from './fileHandler';
+import { StateService } from './state';
 import { ICameraResult } from './peabodyTypes';
 import { DataStreamController } from './dataStreamProcessor';
 import { VideoStreamController } from './videoStreamProcessor';
@@ -37,6 +38,9 @@ export class CameraService extends EventEmitter {
 
     @inject('fileHandler')
     private fileHandler: FileHandlerService;
+
+    @inject('state')
+    private state: StateService;
 
     @inject('dataStreamController')
     private dataStreamController: DataStreamController;
@@ -207,19 +211,30 @@ export class CameraService extends EventEmitter {
             title: 'Camera',
             message: status ? 'Succeeded' : `An error occurred while retrieving the camera settings.`,
             body: {
-                sessionToken: this.sessionToken,
-                ipAddresses: this.ipAddresses,
-                rtspUrl: this.sessionToken ? `rtsp://${this.ipAddresses.cameraIpAddress}:${this.rtspVideoPort}/live` : '',
-                vamUrl: this.sessionToken ? this.vamUrl : '',
-                resolution: this.sessionToken ? this.resolutions[this.videoSettings.resolutionSelectVal] : '',
-                resolutions: this.resolutions,
-                encoder: this.sessionToken ? this.encoders[this.videoSettings.encodeModeSelectVal] : '',
-                encoders: this.encoders,
-                bitRate: this.sessionToken ? this.bitRates[this.videoSettings.bitRateSelectVal] : '',
-                bitRates: this.bitRates,
-                frameRate: this.sessionToken ? this.frameRates[this.videoSettings.fpsSelectVal] : '',
-                frameRates: this.frameRates,
-                modelFiles: this.modelFiles
+                deviceConfig: {
+                    sessionToken: this.sessionToken,
+                    ipAddresses: this.ipAddresses,
+                    rtspUrl: this.sessionToken ? `rtsp://${this.ipAddresses.cameraIpAddress}:${this.rtspVideoPort}/live` : '',
+                    vamUrl: this.sessionToken ? this.vamUrl : '',
+                    resolution: this.sessionToken ? this.resolutions[this.videoSettings.resolutionSelectVal] : '',
+                    resolutions: this.resolutions,
+                    encoder: this.sessionToken ? this.encoders[this.videoSettings.encodeModeSelectVal] : '',
+                    encoders: this.encoders,
+                    bitRate: this.sessionToken ? this.bitRates[this.videoSettings.bitRateSelectVal] : '',
+                    bitRates: this.bitRates,
+                    frameRate: this.sessionToken ? this.frameRates[this.videoSettings.fpsSelectVal] : '',
+                    frameRates: this.frameRates,
+                    modelFiles: this.modelFiles
+                },
+                iotcConfig: {
+                    systemName: this.state.systemName,
+                    systemId: this.state.systemId,
+                    deviceId: this.state.deviceId,
+                    scopeId: this.state.scopeId,
+                    deviceKey: this.state.deviceKey,
+                    templateId: this.state.templateId,
+                    iotCentralHubConnectionString: this.state.iotCentralHubConnectionString
+                }
             }
         };
     }
