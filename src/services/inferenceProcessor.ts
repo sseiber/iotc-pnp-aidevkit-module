@@ -2,6 +2,7 @@ import { service, inject } from 'spryly';
 import { LoggingService } from './logging';
 import { ConfigService } from './config';
 import { SubscriptionService } from '../services/subscription';
+import { sleep } from '../utils';
 import * as _get from 'lodash.get';
 
 const defaultConfidenceThreshold: number = 70;
@@ -25,7 +26,7 @@ export class InferenceProcessorService {
         this.confidenceThreshold = Number(this.config.get('confidenceThreshold')) || defaultConfidenceThreshold;
     }
 
-    public handleDataInference(inference: any) {
+    public async handleDataInference(inference: any) {
         const inferences = _get(inference, 'objects');
 
         if (inferences && Array.isArray(inferences)) {
@@ -48,7 +49,7 @@ export class InferenceProcessorService {
                 return publishedItems;
             }, []);
 
-            this.publishInference({
+            await this.publishInference({
                 timestamp: inference.timestamp,
                 inferences: publishedInferences
             });
@@ -56,10 +57,15 @@ export class InferenceProcessorService {
     }
 
     public handleVideoFrame(imageData: Buffer) {
-        this.lastImageData = Buffer.from(imageData);
+        this.lastImageData = imageData;
     }
 
-    private publishInference(inference) {
+    private async publishInference(inference) {
+        this.lastImageData = null;
+        while (!this.lastImageData) {
+            await sleep(10);
+        }
+
         this.subscription.publishInference({
             inference,
             imageData: this.lastImageData

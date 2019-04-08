@@ -31,7 +31,7 @@ The project includes a Dockerfile and scripts used to build the docker container
         ```
     * Run the following command to start the Docker image  
         ```
-        docker run -it -e cameraUsername=admin -e cameraPassword=admin --network=host -v /data/misc:/data/misc iotccrscotts.azurecr.io/peabody-local-service:<latest-version> node ./dist/index.js
+        docker run -it --network=host -v /data/misc:/data/misc iotccrscotts.azurecr.io/peabody-local-service:<latest-version> node ./dist/index.js
         ```
 ## To deploy from IoT Edge
   * From the Azure Port configure your IoT Edge module with the following configuration  
@@ -63,8 +63,6 @@ The project includes a Dockerfile and scripts used to build the docker container
         }
         ```
     * Environment Variables:  
-    `cameraUsername=admin`  
-    `cameraPassword=admin`
 
     * Select `Configure advanced Edge Runtime settings`  
     In `Create Options` for the Edge Hub (the first section) add:  
