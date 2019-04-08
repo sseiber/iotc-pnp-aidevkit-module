@@ -65,12 +65,12 @@ export class StateService {
         return this.stateInternal.registration.templateId || '';
     }
 
-    public get ioTCentralHubConnectionString(): string {
-        return this.stateInternal.registration.ioTCentralHubConnectionString || '';
+    public get iotCentralHubConnectionString(): string {
+        return this.stateInternal.registration.iotCentralHubConnectionString || '';
     }
 
-    public async setIoTCentralHubConnectionString(connectionString: string) {
-        this.stateInternal.registration.ioTCentralHubConnectionString = connectionString;
+    public async setIotCentralHubConnectionString(connectionString: string) {
+        this.stateInternal.registration.iotCentralHubConnectionString = connectionString;
 
         await this.flushState();
     }
