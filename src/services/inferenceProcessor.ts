@@ -2,7 +2,10 @@ import { service, inject } from 'spryly';
 import { LoggingService } from './logging';
 import { ConfigService } from './config';
 import { SubscriptionService } from '../services/subscription';
-import { sleep } from '../utils';
+import { DataStreamController } from '../services/dataStreamProcessor';
+import { VideoStreamController } from '../services/videoStreamProcessor';
+import { IoTCentralService } from '../services/iotcentral';
+import { sleep, bind } from '../utils';
 import * as _get from 'lodash.get';
 
 const defaultConfidenceThreshold: number = 70;
@@ -18,14 +21,41 @@ export class InferenceProcessorService {
     @inject('subscription')
     private subscription: SubscriptionService;
 
+    @inject('dataStreamController')
+    private dataStreamController: DataStreamController;
+
+    @inject('videoStreamController')
+    private videoStreamController: VideoStreamController;
+
+    @inject('iotCentral')
+    private iotCentral: IoTCentralService;
+
     private inferenceCount: number = 0;
     private lastImageData: Buffer = null;
     private confidenceThreshold: number = defaultConfidenceThreshold;
 
     public async init(): Promise<void> {
         this.confidenceThreshold = Number(this.config.get('confidenceThreshold')) || defaultConfidenceThreshold;
+        this.dataStreamController.setInferenceCallback(this.handleDataInference);
+        this.videoStreamController.setVideoFrameCallback(this.handleVideoFrame);
     }
 
+    public async startInferenceProcessor(rtspDataUrl: string, rtspVideoUrl: string) {
+        let result = await this.dataStreamController.startDataStreamProcessor(rtspDataUrl);
+
+        if (result === true) {
+            result = await this.videoStreamController.startVideoStreamProcessor(rtspVideoUrl);
+        }
+
+        return result;
+    }
+
+    public stopInferenceProcessor() {
+        this.videoStreamController.stopVideoStreamProcessor();
+        this.dataStreamController.stopDataStreamProcessor();
+    }
+
+    @bind
     public async handleDataInference(inference: any) {
         const inferences = _get(inference, 'objects');
 
@@ -56,7 +86,8 @@ export class InferenceProcessorService {
         }
     }
 
-    public handleVideoFrame(imageData: Buffer) {
+    @bind
+    public async handleVideoFrame(imageData: Buffer) {
         this.lastImageData = imageData;
     }
 

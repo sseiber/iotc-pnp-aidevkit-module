@@ -75,6 +75,12 @@ export class StateService {
         await this.flushState();
     }
 
+    public async setIotCentralProvisioningStatus(errorStatus: string) {
+        this.stateInternal.registration.setIotCentralProvisioningStatus = errorStatus;
+
+        await this.flushState();
+    }
+
     private async loadState() {
         try {
             this.stateInternal = await this.storage.get(this.stateFile);

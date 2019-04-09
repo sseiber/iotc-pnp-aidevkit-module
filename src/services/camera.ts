@@ -11,8 +11,8 @@ import { LoggingService } from './logging';
 import { FileHandlerService } from './fileHandler';
 import { StateService } from './state';
 import { ICameraResult } from './peabodyTypes';
-import { DataStreamController } from './dataStreamProcessor';
-import { VideoStreamController } from './videoStreamProcessor';
+import { InferenceProcessorService } from '../services/inferenceProcessor';
+import { IoTCentralService } from '../services/iotcentral';
 import { bind, sleep } from '../utils';
 
 const defaultCameraUsername: string = 'admin';
@@ -42,11 +42,11 @@ export class CameraService extends EventEmitter {
     @inject('state')
     private state: StateService;
 
-    @inject('dataStreamController')
-    private dataStreamController: DataStreamController;
+    @inject('inferenceProcessor')
+    private inferenceProcessor: InferenceProcessorService;
 
-    @inject('videoStreamController')
-    private videoStreamController: VideoStreamController;
+    @inject('iotCentral')
+    private iotCentral: IoTCentralService;
 
     private cameraUserName: string = defaultCameraUsername;
     private cameraPassword: string = defaultCameraPassword;
@@ -165,8 +165,7 @@ export class CameraService extends EventEmitter {
         let status = false;
 
         try {
-            this.videoStreamController.stopVideoStreamProcessor();
-            this.dataStreamController.stopDataStreamProcessor();
+            this.inferenceProcessor.stopInferenceProcessor();
 
             for (let iLogoutAttempts = 0; status === false && iLogoutAttempts < 3; ++iLogoutAttempts) {
                 try {
@@ -233,7 +232,8 @@ export class CameraService extends EventEmitter {
                     scopeId: this.state.scopeId,
                     deviceKey: this.state.deviceKey,
                     templateId: this.state.templateId,
-                    iotCentralHubConnectionString: this.state.iotCentralHubConnectionString
+                    iotCentralHubConnectionString: this.state.iotCentralHubConnectionString,
+                    iotCentralProvisioningStatus: this.state.setIotCentralProvisioningStatus
                 }
             }
         };
@@ -428,13 +428,16 @@ export class CameraService extends EventEmitter {
                     if (result === true) {
                         this.logger.log(['CameraService', 'info'], `Starting video stream processor`);
 
-                        result = await this.dataStreamController.startDataStreamProcessor(this.vamUrl);
-
-                        if (result === true) {
-                            result = await this.videoStreamController.startVideoStreamProcessor(`rtsp://${this.ipAddresses.cameraIpAddress}:${this.rtspVideoPort}/live`);
-                        }
+                        result = await this.inferenceProcessor.startInferenceProcessor(this.vamUrl, `rtsp://${this.ipAddresses.cameraIpAddress}:${this.rtspVideoPort}/live`);
                     }
                 }
+            }
+
+            try {
+                await this.iotCentral.iotCentralDpsProvisionDevice();
+            }
+            catch (ex) {
+                // eat exception and continue
             }
 
             return result;

@@ -2,7 +2,6 @@ import { service, inject } from 'spryly';
 import { spawn } from 'child_process';
 import { LoggingService } from './logging';
 import { ConfigService } from './config';
-import { InferenceProcessorService } from './inferenceProcessor';
 import * as _get from 'lodash.get';
 import { Transform } from 'stream';
 import { platform as osPlatform } from 'os';
@@ -22,9 +21,7 @@ export class VideoStreamController {
     @inject('config')
     private config: ConfigService;
 
-    @inject('inferenceProcessor')
-    private inferenceProcessor: InferenceProcessorService;
-
+    private handleVideoFrameCallback: any = null;
     private videoCaptureSource: string = rtspVideoCaptureSource;
     private ffmpegProcess: any = null;
     private ffmpegCommandArgs: string = '';
@@ -39,6 +36,10 @@ export class VideoStreamController {
         else {
             this.ffmpegCommandArgs = osPlatform() === 'darwin' ? ffmpegCaptureCommandArgsMac : ffmpegCaptureCommandArgsLinux;
         }
+    }
+
+    public setVideoFrameCallback(handleVideoFrame: any) {
+        this.handleVideoFrameCallback = handleVideoFrame;
     }
 
     public async startVideoStreamProcessor(videoStreamUrl: string): Promise<boolean> {
@@ -62,7 +63,9 @@ export class VideoStreamController {
             const frameProcessor = new FrameProcessor({});
 
             frameProcessor.on('jpeg', (jpegData: any) => {
-                this.inferenceProcessor.handleVideoFrame(jpegData);
+                (async () => {
+                    return this.handleVideoFrameCallback(jpegData);
+                })().catch();
             });
 
             this.ffmpegProcess.stdout.pipe(frameProcessor);

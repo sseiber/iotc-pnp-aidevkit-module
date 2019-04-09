@@ -45,32 +45,34 @@ export class IoTCentralService {
     }
 
     public async iotCentralDpsProvisionDevice(): Promise<boolean> {
-        const expiry = (Date.now() - (SECONDS_PER_MINUTE * 5) + (SECONDS_PER_HOUR * Number(this.iotCentralExpiryHours)));
-        const sr = `${this.state.scopeId}%2fregistrations%2f${this.state.deviceId}`;
-        const sig = this.computDerivedSymmetricKey(this.state.deviceKey, `${sr}\n${expiry}`);
+        this.logger.log(['IoTCentralService', 'info'], `Starting IoT Central provisioning for device: ${this.state.deviceId}`);
 
-        const options = {
-            method: 'PUT',
-            url: this.iotCentralDpsEndpoint.replace('###SCOPEID', this.state.scopeId).replace('###DEVICEID', this.state.deviceId)
-                + this.iotCentralDpsRegistrationSuffix.replace('###API_VERSION', this.iotCentralDpsProvisionApiVersion),
-            headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json; charset=utf-8',
-                'Connection': 'keep-alive',
-                'UserAgent': 'prov_device_client/1.0',
-                'Authorization': `SharedAccessSignature sr=${sr}&sig=${encodeURIComponent(sig)}&se=${expiry}&skn=registration`
-            },
-            body: {
-                registrationId: this.state.deviceId,
-                data: {
-                    iotcModelId: this.state.templateId
-                }
-            },
-            json: true
-        };
+        let provisioningStatus = `IoT Central successfully provisioned device ${this.state.deviceId}`;
 
         try {
-            this.logger.log(['IoTCentralService', 'info'], `IoT Central dps request: ${options.url}`);
+            const expiry = (Date.now() - (SECONDS_PER_MINUTE * 5) + (SECONDS_PER_HOUR * Number(this.iotCentralExpiryHours)));
+            const sr = `${this.state.scopeId}%2fregistrations%2f${this.state.deviceId}`;
+            const sig = this.computDerivedSymmetricKey(this.state.deviceKey, `${sr}\n${expiry}`);
+
+            const options = {
+                method: 'PUT',
+                url: this.iotCentralDpsEndpoint.replace('###SCOPEID', this.state.scopeId).replace('###DEVICEID', this.state.deviceId)
+                    + this.iotCentralDpsRegistrationSuffix.replace('###API_VERSION', this.iotCentralDpsProvisionApiVersion),
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json; charset=utf-8',
+                    'Connection': 'keep-alive',
+                    'UserAgent': 'prov_device_client/1.0',
+                    'Authorization': `SharedAccessSignature sr=${sr}&sig=${encodeURIComponent(sig)}&se=${expiry}&skn=registration`
+                },
+                body: {
+                    registrationId: this.state.deviceId,
+                    data: {
+                        iotcModelId: this.state.templateId
+                    }
+                },
+                json: true
+            };
 
             let result = await this.iotcRequest(options);
 
@@ -104,14 +106,20 @@ export class IoTCentralService {
 
                 await this.state.setIotCentralHubConnectionString(`HostName=${iotcHub};DeviceId=${this.state.deviceId};SharedAccessKey=${this.state.deviceKey}`);
 
+                await this.state.setIotCentralProvisioningStatus(provisioningStatus);
+
                 return true;
             }
 
-            this.logger.log(['IoTCentralService', 'error'], `IoT Central dps provisioning error code: ${errorCode}`);
+            provisioningStatus = `IoT Central dps provisioning error code: ${errorCode}`;
+            this.logger.log(['IoTCentralService', 'error'], provisioningStatus);
         }
         catch (ex) {
-            this.logger.log(['IoTCentralService', 'error'], `getConnectionString: ${ex.message}`);
+            provisioningStatus = `IoT Central dps provisioning error: ${ex.message}`;
+            this.logger.log(['IoTCentralService', 'error'], provisioningStatus);
         }
+
+        await this.state.setIotCentralProvisioningStatus(provisioningStatus);
 
         return false;
     }

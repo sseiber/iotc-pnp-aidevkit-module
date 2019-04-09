@@ -1,7 +1,6 @@
 import { service, inject } from 'spryly';
 import { spawn } from 'child_process';
 import { LoggingService } from './logging';
-import { InferenceProcessorService } from './inferenceProcessor';
 import { Transform } from 'stream';
 
 const gstCommand = 'gst-launch-1.0';
@@ -12,10 +11,12 @@ export class DataStreamController {
     @inject('logger')
     private logger: LoggingService;
 
-    @inject('inferenceProcessor')
-    private inferenceProcessor: InferenceProcessorService;
+    private handleDataInferenceCallback: any = null;
+    private gstProcess: any = null;
 
-    private gstProcess = null;
+    public setInferenceCallback(handleInference: any) {
+        this.handleDataInferenceCallback = handleInference;
+    }
 
     public async startDataStreamProcessor(dataStreamUrl: string): Promise<boolean> {
         this.logger.log(['DataStreamController', 'info'], `Starting capture processes`);
@@ -36,7 +37,9 @@ export class DataStreamController {
             const frameProcessor = new FrameProcessor({});
 
             frameProcessor.on('inference', (inference: any) => {
-                this.inferenceProcessor.handleDataInference(inference);
+                (async () => {
+                    return this.handleDataInferenceCallback(inference);
+                })().catch();
             });
 
             this.gstProcess.stdout.pipe(frameProcessor);

@@ -41,7 +41,7 @@ export class HomePageRoutes extends RoutePlugin {
 
     @route({
         method: 'GET',
-        path: '/favicon.ico',
+        path: '/favicons/favicon.ico',
         options: {
             tags: ['homepage'],
             description: 'The homepage favicon',
@@ -57,7 +57,7 @@ export class HomePageRoutes extends RoutePlugin {
 
     @route({
         method: 'GET',
-        path: '/static/{path*}',
+        path: '/favicons/{path*}',
         options: {
             tags: ['homepage'],
             description: 'The homepage static assets',

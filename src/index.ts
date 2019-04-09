@@ -58,4 +58,6 @@ async function start() {
     }
 }
 
-start();
+(async () => {
+    await start();
+})().catch();
