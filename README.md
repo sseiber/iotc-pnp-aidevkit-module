@@ -17,7 +17,7 @@ The project includes a Dockerfile and scripts used to build the docker container
 
 ## Prepare for debugging with VSCode
 ### Since the AI Vision Dev Kit interface is REST we can run the web client/server experience locally on a development machine and still control the camera. This is a better developent cycle than building a Docker container and deploying over and over. In order to do what we have to make sure the local environment is configured properly.
-  * Create a folder named `peabody` in your project's root. This folder simulates the root folder on the device that parents the vision model folder.
+  * Create a folder named `client` in your project's root. This folder simulates the root folder on the device that parents the vision model folder.
   * Open a command window and use `adb shell` to connect to your AI Dev Kit
   * **[OPTIONAL IF YOU WANT TO PRECONFIGURE THE DEVICE]**
     * Place config file `<your-unique-hostname>-state.json` in a folder on the host named `/root/misc/storage` folder with the following data:  

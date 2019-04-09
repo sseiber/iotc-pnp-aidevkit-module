@@ -10,7 +10,7 @@ import { ConfigService } from './config';
 import { LoggingService } from './logging';
 import { FileHandlerService } from './fileHandler';
 import { StateService } from './state';
-import { ICameraResult } from './peabodyTypes';
+import { ICameraResult } from './clientTypes';
 import { InferenceProcessorService } from '../services/inferenceProcessor';
 import { IoTCentralService } from '../services/iotcentral';
 import { bind, sleep } from '../utils';
@@ -233,7 +233,8 @@ export class CameraService extends EventEmitter {
                     deviceKey: this.state.deviceKey,
                     templateId: this.state.templateId,
                     iotCentralHubConnectionString: this.state.iotCentralHubConnectionString,
-                    iotCentralProvisioningStatus: this.state.setIotCentralProvisioningStatus
+                    iotCentralProvisioningStatus: this.state.iotCentralProvisioningStatus,
+                    iotCentralConnectionStatus: this.state.iotCentralConnectionStatus
                 }
             }
         };
@@ -416,7 +417,7 @@ export class CameraService extends EventEmitter {
                     if (result === true) {
                         this.logger.log(['CameraService', 'info'], `Configuring inference overlay`);
 
-                        result = await this.configureOverlay('inference');
+                        // result = await this.configureOverlay('inference');
                     }
 
                     if (result === true) {
@@ -435,6 +436,8 @@ export class CameraService extends EventEmitter {
 
             try {
                 await this.iotCentral.iotCentralDpsProvisionDevice();
+
+                // await this.iotCentral.connectIotcClient();
             }
             catch (ex) {
                 // eat exception and continue

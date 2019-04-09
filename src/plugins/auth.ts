@@ -17,7 +17,7 @@ export class AuthPlugin implements HapiPlugin {
             await server.register([HapiAuthJwt, LocalNetworkAuthPlugin]);
 
             server.auth.strategy(
-                'peabody-jwt',
+                'client-jwt',
                 'jwt',
                 {
                     key: this.auth.secret,
@@ -26,7 +26,7 @@ export class AuthPlugin implements HapiPlugin {
                 });
 
             server.auth.strategy(
-                'peabody-localnetwork',
+                'client-localnetwork',
                 'localnetwork'
             );
         }

@@ -26,7 +26,7 @@ export class HomePageRoutes extends RoutePlugin {
 
     @route({
         method: 'GET',
-        path: '/peabody/{path*}',
+        path: '/client/{path*}',
         options: {
             tags: ['homepage'],
             description: 'The homepage spa'
