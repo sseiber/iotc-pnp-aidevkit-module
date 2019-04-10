@@ -202,7 +202,7 @@ export class IoTCentralService {
         const iotcMessage = new IotcMessage(JSON.stringify(data));
 
         try {
-            const eventResult = await new Promise((resolve, reject) => {
+            await new Promise((resolve, reject) => {
                 this.iotcClient.sendEvent(iotcMessage, (error, result) => {
                     if (error) {
                         reject(error);
@@ -211,8 +211,6 @@ export class IoTCentralService {
                     resolve(result);
                 });
             });
-
-            const foo = 5;
         }
         catch (ex) {
             this.logger.log(['IoTCentralService', 'error'], `sendTelemetry: ${ex.message}`);
