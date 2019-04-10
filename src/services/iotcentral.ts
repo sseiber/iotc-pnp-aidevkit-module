@@ -1,7 +1,6 @@
 import { service, inject } from 'spryly';
 import * as request from 'request';
 import * as _get from 'lodash.get';
-import { promisify } from 'util';
 import * as crypto from 'crypto';
 import { LoggingService } from './logging';
 import { ConfigService } from './config';
@@ -42,6 +41,7 @@ export class IoTCentralService {
     private iotCentralExpiryHours: string = defaultIotCentralExpiryHours;
 
     private iotcClient: any = null;
+    private iotcClientConnected: boolean = false;
 
     public async init(): Promise<void> {
         this.iotCentralDpsProvisionApiVersion = this.config.get('iotCentralDpsProvisionApiVersion') || defaultIotCentralDpsProvisionApiVersion;
@@ -53,19 +53,20 @@ export class IoTCentralService {
     }
 
     public async iotCentralDpsProvisionDevice(): Promise<boolean> {
-        this.logger.log(['IoTCentralService', 'info'], `Starting IoT Central provisioning for device: ${this.state.deviceId}`);
-
+        const iotCentralState = this.state.iotCentral;
         let result = true;
-        let provisioningStatus = `IoT Central successfully provisioned device ${this.state.deviceId}`;
+        let provisioningStatus = `IoT Central successfully provisioned device ${iotCentralState.deviceId}`;
 
         try {
+            this.logger.log(['IoTCentralService', 'info'], `Starting IoT Central provisioning for device: ${iotCentralState.deviceId}`);
+
             const expiry = (Date.now() - (SECONDS_PER_MINUTE * 5) + (SECONDS_PER_HOUR * Number(this.iotCentralExpiryHours)));
-            const sr = `${this.state.scopeId}%2fregistrations%2f${this.state.deviceId}`;
-            const sig = this.computDerivedSymmetricKey(this.state.deviceKey, `${sr}\n${expiry}`);
+            const sr = `${iotCentralState.scopeId}%2fregistrations%2f${iotCentralState.deviceId}`;
+            const sig = this.computDerivedSymmetricKey(iotCentralState.deviceKey, `${sr}\n${expiry}`);
 
             const options = {
                 method: 'PUT',
-                url: this.iotCentralDpsEndpoint.replace('###SCOPEID', this.state.scopeId).replace('###DEVICEID', this.state.deviceId)
+                url: this.iotCentralDpsEndpoint.replace('###SCOPEID', iotCentralState.scopeId).replace('###DEVICEID', iotCentralState.deviceId)
                     + this.iotCentralDpsRegistrationSuffix.replace('###API_VERSION', this.iotCentralDpsProvisionApiVersion),
                 headers: {
                     'Accept': 'application/json',
@@ -75,9 +76,9 @@ export class IoTCentralService {
                     'Authorization': `SharedAccessSignature sr=${sr}&sig=${encodeURIComponent(sig)}&se=${expiry}&skn=registration`
                 },
                 body: {
-                    registrationId: this.state.deviceId,
+                    registrationId: iotCentralState.deviceId,
                     data: {
-                        iotcModelId: this.state.templateId
+                        iotcModelId: iotCentralState.templateId
                     }
                 },
                 json: true
@@ -91,7 +92,7 @@ export class IoTCentralService {
 
             delete options.body;
             options.method = 'GET';
-            options.url = this.iotCentralDpsEndpoint.replace('###SCOPEID', this.state.scopeId).replace('###DEVICEID', this.state.deviceId)
+            options.url = this.iotCentralDpsEndpoint.replace('###SCOPEID', iotCentralState.scopeId).replace('###DEVICEID', iotCentralState.deviceId)
                 + this.iotCentralDpsOperationsSuffix.replace('###OPERATION_ID', operationId).replace('###API_VERSION', this.iotCentralDpsAssigningApiVersion);
 
             const errorCode = _get(response, 'errorCode');
@@ -114,7 +115,7 @@ export class IoTCentralService {
 
                     this.logger.log(['IoTCentralService', 'info'], `IoT Central dps hub assignment: ${iotcHub}`);
 
-                    await this.state.setIotCentralHubConnectionString(`HostName=${iotcHub};DeviceId=${this.state.deviceId};SharedAccessKey=${this.state.deviceKey}`);
+                    await this.state.setIotCentralHubConnectionString(`HostName=${iotcHub};DeviceId=${iotCentralState.deviceId};SharedAccessKey=${iotCentralState.deviceKey}`);
 
                     result = true;
                 }
@@ -139,24 +140,42 @@ export class IoTCentralService {
 
     public async connectIotcClient(): Promise<boolean> {
         let result = true;
-        let connectionStatus = `IoT Central successfully connected device ${this.state.deviceId}`;
+        let connectionStatus = `IoT Central successfully connected device ${this.state.iotCentral.deviceId}`;
 
-        this.iotcClient = iotcClientFromConnectionString(this.state.iotCentralHubConnectionString);
+        this.iotcClient = iotcClientFromConnectionString(this.state.iotCentral.iotCentralHubConnectionString);
         if (!this.iotcClient) {
             result = false;
         }
 
         if (result === true) {
             try {
-                await promisify(this.iotcClient.open)();
+                await new Promise((resolve, reject) => {
+                    this.iotcClient.open((error) => {
+                        if (error) {
+                            return reject(error);
+                        }
+
+                        return resolve();
+                    });
+                });
 
                 this.iotcClient.on('error', this.onIotcClientError);
 
                 this.iotcClient.onDeviceMethod('start_training_mode', this.iotcClientStartTraining);
 
-                const twin = await promisify(this.iotcClient.getTwin)();
+                const deviceTwin = await new Promise((resolve, reject) => {
+                    this.iotcClient.getTwin((error, twin) => {
+                        if (error) {
+                            return reject(error);
+                        }
 
-                await this.iotcClientSendDeviceProperties(twin);
+                        return resolve(twin);
+                    });
+                });
+
+                await this.iotcClientSendDeviceProperties(deviceTwin);
+
+                this.iotcClientConnected = true;
             }
             catch (ex) {
                 connectionStatus = `IoT Central connection error: ${ex.message}`;
@@ -172,7 +191,7 @@ export class IoTCentralService {
     }
 
     public async sendTelemetry(inference: any) {
-        if (!inference) {
+        if (!inference || !this.iotcClientConnected) {
             return;
         }
 
@@ -183,7 +202,17 @@ export class IoTCentralService {
         const iotcMessage = new IotcMessage(JSON.stringify(data));
 
         try {
-            await promisify(this.iotcClient.sendEvent)(iotcMessage);
+            const eventResult = await new Promise((resolve, reject) => {
+                this.iotcClient.sendEvent(iotcMessage, (error, result) => {
+                    if (error) {
+                        reject(error);
+                    }
+
+                    resolve(result);
+                });
+            });
+
+            const foo = 5;
         }
         catch (ex) {
             this.logger.log(['IoTCentralService', 'error'], `sendTelemetry: ${ex.message}`);
@@ -213,28 +242,17 @@ export class IoTCentralService {
     }
 
     @bind
-    private async iotcClientSendDeviceProperties(twin: any) {
-        const deviceProperties = {
-            ['main_board']: 'Vision AI Development Kit',
-            ['os']: 'Yocto Linux',
-            ['soc']: 'Qualcomm QCS603',
-            ['wifi_bluetooth']: 'WCN3980 (1x1)/ Bluetooth low energy 5',
-            ['camera']: '8MP/4K UHD',
-            ['emmc']: '16GB',
-            ['system_memory']: '4GB LPDDR4x',
-            ['speaker_mic']: 'Line in / out / 4x Mic / Speaker',
-            ['ethernet']: 'Via USB-C with adapter',
-            ['power']: 'Rechargeable battery / PoE / USB-C',
-            ['storage']: 'SD slot for microSD card',
-            ['indicator']: '3x LED',
-            ['usb']: 'USB Type C',
-            ['hdmi']: 'HDMI A',
-            ['ip_address']: '127.0.0.1'
-
-        };
-
+    private async iotcClientSendDeviceProperties(deviceTwin: any) {
         try {
-            await promisify(twin.properties.reported.update)(deviceProperties);
+            await new Promise((resolve, reject) => {
+                deviceTwin.properties.reported.update(this.state.iotCentral.properties, (error) => {
+                    if (error) {
+                        return reject(error);
+                    }
+
+                    return resolve();
+                });
+            });
         }
         catch (ex) {
             this.logger.log(['IoTCentralService', 'error'], `Error while updating client properties: ${ex.message}`);

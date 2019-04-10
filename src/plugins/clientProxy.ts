@@ -74,7 +74,7 @@ export class ClientProxyPlugin implements HapiPlugin {
                 registerClientResponse = await this.nesClient.message({
                     type: 'registerClientId',
                     payload: {
-                        clientId: this.state.systemId
+                        clientId: this.state.system.systemId
                     }
                 });
             }

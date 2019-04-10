@@ -4,7 +4,7 @@ import { ConfigService } from './config';
 import { SubscriptionService } from '../services/subscription';
 import { DataStreamController } from '../services/dataStreamProcessor';
 import { VideoStreamController } from '../services/videoStreamProcessor';
-// import { IoTCentralService } from '../services/iotcentral';
+import { IoTCentralService } from '../services/iotcentral';
 import { sleep, bind } from '../utils';
 import * as _get from 'lodash.get';
 
@@ -27,8 +27,8 @@ export class InferenceProcessorService {
     @inject('videoStreamController')
     private videoStreamController: VideoStreamController;
 
-    // @inject('iotCentral')
-    // private iotCentral: IoTCentralService;
+    @inject('iotCentral')
+    private iotCentral: IoTCentralService;
 
     private inferenceCount: number = 0;
     private lastImageData: Buffer = null;
@@ -97,7 +97,7 @@ export class InferenceProcessorService {
             await sleep(10);
         }
 
-        // await this.iotCentral.sendTelemetry(inference);
+        await this.iotCentral.sendTelemetry(inference);
 
         this.subscription.publishInference({
             inference,

@@ -23,7 +23,7 @@ The project includes a Dockerfile and scripts used to build the docker container
     * Place config file `<your-unique-hostname>-state.json` in a folder on the host named `/root/misc/storage` folder with the following data:  
         ```
         {
-            "registration": {
+            "system": {
                 "systemName": "systemname",
                 "systemId": "fff86194-5faf-44a4-a50a-4ffd9766af5e"
             }

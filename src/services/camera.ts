@@ -226,15 +226,15 @@ export class CameraService extends EventEmitter {
                     modelFiles: this.modelFiles
                 },
                 iotcConfig: {
-                    systemName: this.state.systemName,
-                    systemId: this.state.systemId,
-                    deviceId: this.state.deviceId,
-                    scopeId: this.state.scopeId,
-                    deviceKey: this.state.deviceKey,
-                    templateId: this.state.templateId,
-                    iotCentralHubConnectionString: this.state.iotCentralHubConnectionString,
-                    iotCentralProvisioningStatus: this.state.iotCentralProvisioningStatus,
-                    iotCentralConnectionStatus: this.state.iotCentralConnectionStatus
+                    systemName: this.state.iotCentral.systemName,
+                    systemId: this.state.iotCentral.systemId,
+                    deviceId: this.state.iotCentral.deviceId,
+                    scopeId: this.state.iotCentral.scopeId,
+                    deviceKey: this.state.iotCentral.deviceKey,
+                    templateId: this.state.iotCentral.templateId,
+                    iotCentralHubConnectionString: this.state.iotCentral.iotCentralHubConnectionString,
+                    iotCentralProvisioningStatus: this.state.iotCentral.iotCentralProvisioningStatus,
+                    iotCentralConnectionStatus: this.state.iotCentral.iotCentralConnectionStatus
                 }
             }
         };
@@ -417,7 +417,7 @@ export class CameraService extends EventEmitter {
                     if (result === true) {
                         this.logger.log(['CameraService', 'info'], `Configuring inference overlay`);
 
-                        // result = await this.configureOverlay('inference');
+                        result = await this.configureOverlay('inference');
                     }
 
                     if (result === true) {
@@ -437,7 +437,7 @@ export class CameraService extends EventEmitter {
             try {
                 await this.iotCentral.iotCentralDpsProvisionDevice();
 
-                // await this.iotCentral.connectIotcClient();
+                await this.iotCentral.connectIotcClient();
             }
             catch (ex) {
                 // eat exception and continue

@@ -34,7 +34,7 @@ export class AuthService {
     public async init() {
         this.logger.log(['AuthService', 'info'], 'initialize');
 
-        this.issuerInternal = this.state.systemId;
+        this.issuerInternal = this.state.system.systemId;
         if (!this.issuerInternal) {
             throw new Error('No system id defined');
         }
