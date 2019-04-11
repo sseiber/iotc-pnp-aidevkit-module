@@ -2,12 +2,44 @@ import { service, inject } from 'spryly';
 import * as request from 'request';
 import * as _get from 'lodash.get';
 import * as crypto from 'crypto';
+import { promisify } from 'util';
 import { LoggingService } from './logging';
 import { ConfigService } from './config';
 import { StateService } from './state';
 import { sleep, bind } from '../utils';
 import * as AzureIotDeviceMqtt from 'azure-iot-device-mqtt';
 import * as AzureIotDevice from 'azure-iot-device';
+
+export const DeviceTelemetry = {
+    Inference: 'telemetry_inference'
+};
+
+export const DeviceState = {
+    InferenceProcessor: 'state_inference_processor',
+    Session: 'state_session'
+};
+
+export const DeviceEvent = {
+    SessionLogin: 'event_session_login',
+    SessionLogout: 'event_session_logout',
+    InferenceProcessingStarted: 'event_inference_processing_started',
+    InferenceProcessingStopped: 'event_inference_proessing_stopped',
+    DeviceRestart: 'event_device_restart'
+};
+
+export const DeviceSetting = {
+    HdmiOutput: 'setting_hdmi_output',
+    Bitrate: 'setting_bitrate',
+    Encoder: 'setting_encoder',
+    Fps: 'setting_fps',
+    Resolution: 'setting_resolution'
+};
+
+export const DeviceProperty = {
+    IpAddress: 'prop_ip_address',
+    RtspVideoUrl: 'prop_rtsp_video_url',
+    RtspDataUrl: 'prop_rtsp_data_url'
+};
 
 const iotcClientFromConnectionString = AzureIotDeviceMqtt.clientFromConnectionString;
 const IotcMessage = AzureIotDevice.Message;
@@ -41,6 +73,9 @@ export class IoTCentralService {
     private iotCentralExpiryHours: string = defaultIotCentralExpiryHours;
 
     private iotcClient: any = null;
+    private iotcDeviceTwin: any = null;
+    private iotcClientSendMeasurement: any = null;
+    private iotcClientUpdateProperties: any = null;
     private iotcClientConnected: boolean = false;
 
     public async init(): Promise<void> {
@@ -55,7 +90,7 @@ export class IoTCentralService {
     public async iotCentralDpsProvisionDevice(): Promise<boolean> {
         const iotCentralState = this.state.iotCentral;
         let result = true;
-        let provisioningStatus = `IoT Central successfully provisioned device ${iotCentralState.deviceId}`;
+        let provisioningStatus = `IoT Central successfully provisioned device: ${iotCentralState.deviceId}`;
 
         try {
             this.logger.log(['IoTCentralService', 'info'], `Starting IoT Central provisioning for device: ${iotCentralState.deviceId}`);
@@ -115,7 +150,7 @@ export class IoTCentralService {
 
                     this.logger.log(['IoTCentralService', 'info'], `IoT Central dps hub assignment: ${iotcHub}`);
 
-                    await this.state.setIotCentralHubConnectionString(`HostName=${iotcHub};DeviceId=${iotCentralState.deviceId};SharedAccessKey=${iotCentralState.deviceKey}`);
+                    await this.state.setIotCentralProperty('iotCentralHubConnectionString', `HostName=${iotcHub};DeviceId=${iotCentralState.deviceId};SharedAccessKey=${iotCentralState.deviceKey}`);
 
                     result = true;
                 }
@@ -133,14 +168,14 @@ export class IoTCentralService {
             result = false;
         }
 
-        await this.state.setIotCentralProvisioningStatus(provisioningStatus);
+        await this.state.setIotCentralProperty('iotCentralConnectionStatus', provisioningStatus);
 
         return result;
     }
 
-    public async connectIotcClient(): Promise<boolean> {
+    public async connectIotcClient(liveProperties: any): Promise<boolean> {
         let result = true;
-        let connectionStatus = `IoT Central successfully connected device ${this.state.iotCentral.deviceId}`;
+        let connectionStatus = `IoT Central successfully connected device: ${this.state.iotCentral.deviceId}`;
 
         this.iotcClient = iotcClientFromConnectionString(this.state.iotCentral.iotCentralHubConnectionString);
         if (!this.iotcClient) {
@@ -149,33 +184,23 @@ export class IoTCentralService {
 
         if (result === true) {
             try {
-                await new Promise((resolve, reject) => {
-                    this.iotcClient.open((error) => {
-                        if (error) {
-                            return reject(error);
-                        }
-
-                        return resolve();
-                    });
-                });
+                await promisify(this.iotcClient.open.bind(this.iotcClient))();
 
                 this.iotcClient.on('error', this.onIotcClientError);
 
                 this.iotcClient.onDeviceMethod('start_training_mode', this.iotcClientStartTraining);
 
-                const deviceTwin = await new Promise((resolve, reject) => {
-                    this.iotcClient.getTwin((error, twin) => {
-                        if (error) {
-                            return reject(error);
-                        }
+                this.iotcDeviceTwin = await promisify(this.iotcClient.getTwin.bind(this.iotcClient))();
 
-                        return resolve(twin);
-                    });
-                });
-
-                await this.iotcClientSendDeviceProperties(deviceTwin);
+                this.iotcClientSendMeasurement = promisify(this.iotcClient.sendEvent.bind(this.iotcClient));
+                this.iotcClientUpdateProperties = promisify(this.iotcDeviceTwin.properties.reported.update.bind(this.iotcDeviceTwin.properties.reported));
 
                 this.iotcClientConnected = true;
+
+                await this.iotcClientSendDeviceProperties({
+                    ...this.state.iotCentral.properties,
+                    ...liveProperties
+                });
             }
             catch (ex) {
                 connectionStatus = `IoT Central connection error: ${ex.message}`;
@@ -185,35 +210,41 @@ export class IoTCentralService {
             }
         }
 
-        await this.state.setIotCentralConnectionStatus(connectionStatus);
+        await this.state.setIotCentralProperty('iotCentralProvisioningStatus', connectionStatus);
 
         return result;
     }
 
-    public async sendTelemetry(inference: any) {
-        if (!inference || !this.iotcClientConnected) {
+    @bind
+    public async sendMeasurement(measurementType: string, data: any) {
+        if (!data || !this.iotcClientConnected) {
             return;
         }
 
-        const data = {
-            inference: inference.inferences.length,
-            inferences: inference.inferences
-        };
         const iotcMessage = new IotcMessage(JSON.stringify(data));
 
         try {
-            await new Promise((resolve, reject) => {
-                this.iotcClient.sendEvent(iotcMessage, (error, result) => {
-                    if (error) {
-                        reject(error);
-                    }
+            await this.iotcClientSendMeasurement(iotcMessage);
 
-                    resolve(result);
-                });
-            });
+            this.logger.log(['IoTCentralService', 'info'], `Device ${measurementType} telemmetry sent`);
         }
         catch (ex) {
-            this.logger.log(['IoTCentralService', 'error'], `sendTelemetry: ${ex.message}`);
+            this.logger.log(['IoTCentralService', 'error'], `sendMeasurement: ${ex.message}`);
+        }
+    }
+
+    public async iotcClientSendDeviceProperties(properties: any) {
+        if (!properties || !this.iotcClientConnected) {
+            return;
+        }
+
+        try {
+            await this.iotcClientUpdateProperties(properties);
+
+            this.logger.log(['IoTCentralService', 'info'], `Device live properties updated`);
+        }
+        catch (ex) {
+            this.logger.log(['IoTCentralService', 'error'], `Error while updating client properties: ${ex.message}`);
         }
     }
 
@@ -237,24 +268,6 @@ export class IoTCentralService {
         // @ts-ignore (error)
         // tslint:disable-next-line:no-empty
         clientResponse.send(10, 'Success', (error) => { });
-    }
-
-    @bind
-    private async iotcClientSendDeviceProperties(deviceTwin: any) {
-        try {
-            await new Promise((resolve, reject) => {
-                deviceTwin.properties.reported.update(this.state.iotCentral.properties, (error) => {
-                    if (error) {
-                        return reject(error);
-                    }
-
-                    return resolve();
-                });
-            });
-        }
-        catch (ex) {
-            this.logger.log(['IoTCentralService', 'error'], `Error while updating client properties: ${ex.message}`);
-        }
     }
 
     private async iotcRequest(options: any): Promise<any> {

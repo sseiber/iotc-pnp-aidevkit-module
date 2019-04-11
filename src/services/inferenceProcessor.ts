@@ -4,8 +4,8 @@ import { ConfigService } from './config';
 import { SubscriptionService } from '../services/subscription';
 import { DataStreamController } from '../services/dataStreamProcessor';
 import { VideoStreamController } from '../services/videoStreamProcessor';
-import { IoTCentralService } from '../services/iotcentral';
-import { sleep, bind } from '../utils';
+import { IoTCentralService, DeviceTelemetry } from '../services/iotcentral';
+import { sleep, bind, forget } from '../utils';
 import * as _get from 'lodash.get';
 
 const defaultConfidenceThreshold: number = 70;
@@ -97,7 +97,12 @@ export class InferenceProcessorService {
             await sleep(10);
         }
 
-        await this.iotCentral.sendTelemetry(inference);
+        const data = {
+            inference: inference.inferences.length,
+            inferences: inference.inferences
+        };
+
+        forget(this.iotCentral.sendMeasurement, [DeviceTelemetry.Inference], data);
 
         this.subscription.publishInference({
             inference,

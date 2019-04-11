@@ -51,24 +51,6 @@ export class StateService {
         await this.flushState();
     }
 
-    public async setIotCentralHubConnectionString(connectionString: string) {
-        this.stateInternal.iotCentral.iotCentralHubConnectionString = connectionString;
-
-        await this.flushState();
-    }
-
-    public async setIotCentralProvisioningStatus(status: string) {
-        this.stateInternal.iotCentral.iotCentralProvisioningStatus = status;
-
-        await this.flushState();
-    }
-
-    public async setIotCentralConnectionStatus(status: string) {
-        this.stateInternal.iotCentral.iotCentralConnectionStatus = status;
-
-        await this.flushState();
-    }
-
     private async loadState() {
         try {
             this.stateInternal = await this.storage.get(this.stateFile);

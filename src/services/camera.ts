@@ -12,8 +12,8 @@ import { FileHandlerService } from './fileHandler';
 import { StateService } from './state';
 import { ICameraResult } from './clientTypes';
 import { InferenceProcessorService } from '../services/inferenceProcessor';
-import { IoTCentralService } from '../services/iotcentral';
-import { bind, sleep } from '../utils';
+import { IoTCentralService, DeviceEvent, DeviceState, DeviceProperty, DeviceSetting } from '../services/iotcentral';
+import { bind, sleep, forget } from '../utils';
 
 const defaultCameraUsername: string = 'admin';
 const defaultCameraPassword: string = 'admin';
@@ -71,6 +71,8 @@ export class CameraService extends EventEmitter {
         displayOut: 0
     };
     private modelFiles: string[] = [];
+    private videoPreview: boolean = false;
+    private vamProcessing: boolean = false;
 
     public get currentResolutionSelectVal() {
         return this.videoSettings.resolutionSelectVal;
@@ -145,18 +147,17 @@ export class CameraService extends EventEmitter {
             const result = await this.logout();
             return {
                 ...result,
-                status: false,
+                status,
                 title: 'Login',
                 message: `An error occurred while creating a new camera session. Try rebooting the device and login again.`
             };
         }
         else {
-            const result = await this.getConfiguration();
+            forget(this.iotCentral.sendMeasurement, 'event', { [DeviceEvent.SessionLogin]: this.sessionToken });
+
             return {
-                ...result,
-                status: true,
-                title: 'Login',
-                message: `Succeeded`
+                ...this.getConfiguration(),
+                title: 'Login'
             };
         }
     }
@@ -179,8 +180,6 @@ export class CameraService extends EventEmitter {
                 }
             }
 
-            this.sessionToken = '';
-
             status = true;
         }
         catch (ex) {
@@ -189,26 +188,27 @@ export class CameraService extends EventEmitter {
             status = false;
         }
 
-        return this.getConfiguration();
-    }
+        forget(this.iotCentral.sendMeasurement, 'event', {
+            [DeviceEvent.SessionLogout]: this.sessionToken,
+            [DeviceEvent.InferenceProcessingStopped]: '0'
+        });
 
-    public async getConfiguration(): Promise<ICameraResult> {
-        let status = false;
-
-        try {
-            const ensureResult = await this.fileHandler.ensureModelFilesExist(this.fileHandler.currentModelFolderPath);
-            this.modelFiles = ensureResult.modelFiles;
-
-            status = true;
-        }
-        catch (ex) {
-            this.logger.log(['CameraService', 'error'], ex.message);
-        }
+        this.sessionToken = '';
+        this.videoPreview = false;
+        this.vamProcessing = false;
 
         return {
+            ...this.getConfiguration(),
             status,
+            title: 'Logout'
+        };
+}
+
+    public getConfiguration(): ICameraResult {
+        return {
+            status: true,
             title: 'Camera',
-            message: status ? 'Succeeded' : `An error occurred while retrieving the camera settings.`,
+            message: 'Succeeded',
             body: {
                 deviceConfig: {
                     sessionToken: this.sessionToken,
@@ -223,7 +223,9 @@ export class CameraService extends EventEmitter {
                     bitRates: this.bitRates,
                     frameRate: this.sessionToken ? this.frameRates[this.videoSettings.fpsSelectVal] : '',
                     frameRates: this.frameRates,
-                    modelFiles: this.modelFiles
+                    modelFiles: this.modelFiles,
+                    videoPreview: this.videoPreview,
+                    vamProcessing: this.vamProcessing
                 },
                 iotcConfig: {
                     systemName: this.state.iotCentral.systemName,
@@ -399,16 +401,24 @@ export class CameraService extends EventEmitter {
                 this.logger.log(['CameraService', 'info'], `Turning on preview`);
 
                 result = await this.ipcPostRequest('/preview', { switchStatus: true });
+
+                if (result === true) {
+                    this.videoPreview = true;
+                }
             }
 
             if (result === true) {
                 const ensureResult = await this.fileHandler.ensureModelFilesExist(this.fileHandler.currentModelFolderPath);
                 if (ensureResult.dlcExists) {
+                    this.modelFiles = ensureResult.modelFiles;
+
                     this.logger.log(['CameraService', 'info'], `Turning on VAM`);
 
                     result = await this.ipcPostRequest('/vam', { switchStatus: true, vamconfig: 'MD' });
 
                     if (result === true) {
+                        this.vamProcessing = true;
+
                         this.logger.log(['CameraService', 'info'], `Retrieving RTSP VAM url`);
 
                         result = await this.getRtspVamUrl();
@@ -435,9 +445,26 @@ export class CameraService extends EventEmitter {
             }
 
             try {
-                await this.iotCentral.iotCentralDpsProvisionDevice();
+                const iotcResult = await this.iotCentral.iotCentralDpsProvisionDevice();
 
-                await this.iotCentral.connectIotcClient();
+                if (iotcResult === true) {
+                    const liveProperties = {
+                        [DeviceProperty.IpAddress]: this.ipAddresses.cameraIpAddress,
+                        [DeviceProperty.RtspVideoUrl]: this.sessionToken ? `rtsp://${this.ipAddresses.cameraIpAddress}:${this.rtspVideoPort}/live` : '',
+                        [DeviceProperty.RtspDataUrl]: this.sessionToken ? this.vamUrl : '',
+                        [DeviceSetting.Resolution]: this.sessionToken ? this.resolutions[this.videoSettings.resolutionSelectVal] : '',
+                        [DeviceSetting.Encoder]: this.sessionToken ? this.encoders[this.videoSettings.encodeModeSelectVal] : '',
+                        [DeviceSetting.Bitrate]: this.sessionToken ? this.bitRates[this.videoSettings.bitRateSelectVal] : '',
+                        [DeviceSetting.Fps]: this.sessionToken ? this.frameRates[this.videoSettings.fpsSelectVal] : '',
+                        [DeviceSetting.HdmiOutput]: this.videoPreview ? 1 : 0,
+                        [DeviceState.InferenceProcessor]: this.vamProcessing ? 'On' : 'Off',
+                        [DeviceState.Session]: this.sessionToken ? 'Active' : 'Inactive'
+                    };
+
+                    await this.iotCentral.connectIotcClient(liveProperties);
+
+                    forget(this.iotCentral.sendMeasurement, 'event', { [DeviceEvent.InferenceProcessingStarted]: '1' });
+                }
             }
             catch (ex) {
                 // eat exception and continue
