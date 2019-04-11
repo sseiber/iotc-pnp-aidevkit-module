@@ -1,7 +1,7 @@
 {
   "name": "peabody-local-service",
-  "version": "1.0.60",
-  "description": "Local service for Peabody",
+  "version": "1.0.65",
+  "description": "Local service for AI Dev Kit",
   "main": "index.js",
   "config": {
     "imageName": "iotccrscotts.azurecr.io/peabody-local-service"
@@ -22,6 +22,8 @@
     "url": "git@github.com:sseiber/peabody-local-service.git"
   },
   "dependencies": {
+    "azure-iot-device": "^1.9.4",
+    "azure-iot-device-mqtt": "^1.9.4",
     "bell": "^10.0.0",
     "boom": "^7.3.0",
     "fs-extra": "^7.0.1",

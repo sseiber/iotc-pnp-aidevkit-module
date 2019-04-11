@@ -12,7 +12,7 @@ export class AuthRoutes extends RoutePlugin {
         path: '/api/v1/auth/generate',
         options: {
             auth: {
-                strategies: ['peabody-jwt', 'peabody-localnetwork'],
+                strategies: ['client-jwt', 'client-localnetwork'],
                 scope: ['admin']
             },
             tags: ['auth'],

@@ -6,6 +6,7 @@ import {
     freemem as osFreeMem,
     totalmem as osTotalMem
 } from 'os';
+import { forget } from './utils';
 
 const composeOptions: ComposeOptions = {
     relativeTo: __dirname,
@@ -17,7 +18,6 @@ const composeOptions: ComposeOptions = {
     }
 };
 
-// Get into Chipper's head on errors!
 // process.on('unhandledRejection', (e) => {
 //     // tslint:disable:no-console
 //     console.log(['startup', 'error'], `Excepction on startup... ${e.message}`);
@@ -58,4 +58,4 @@ async function start() {
     }
 }
 
-start();
+forget(start);

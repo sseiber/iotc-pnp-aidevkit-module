@@ -19,8 +19,12 @@ export class StateService {
     private stateInternal: any;
     private stateFile;
 
-    public get state(): any {
-        return this.stateInternal;
+    public get system(): any {
+        return this.stateInternal.system;
+    }
+
+    public get iotCentral(): any {
+        return this.stateInternal.iotCentral || {};
     }
 
     public async init() {
@@ -30,47 +34,19 @@ export class StateService {
 
         await this.loadState();
 
-        if (!this.systemName) {
-            this.stateInternal.registration.systemName = uuidV4();
+        if (!this.stateInternal.systemName) {
+            this.stateInternal.system.systemName = uuidV4();
         }
 
-        if (!this.systemId) {
-            this.stateInternal.registration.systemId = uuidV4();
+        if (!this.stateInternal.systemId) {
+            this.stateInternal.system.systemId = uuidV4();
         }
 
         await this.flushState();
     }
 
-    public get systemName(): string {
-        return this.stateInternal.registration.systemName;
-    }
-
-    public get systemId(): string {
-        return this.stateInternal.registration.systemId;
-    }
-
-    public get deviceId(): string {
-        return this.stateInternal.registration.deviceId || '';
-    }
-
-    public get scopeId(): string {
-        return this.stateInternal.registration.scopeId || '';
-    }
-
-    public get deviceKey(): string {
-        return this.stateInternal.registration.deviceKey || '';
-    }
-
-    public get templateId(): string {
-        return this.stateInternal.registration.templateId || '';
-    }
-
-    public get iotCentralHubConnectionString(): string {
-        return this.stateInternal.registration.iotCentralHubConnectionString || '';
-    }
-
-    public async setIotCentralHubConnectionString(connectionString: string) {
-        this.stateInternal.registration.iotCentralHubConnectionString = connectionString;
+    public async setIotCentralProperty(property: string, value: any) {
+        this.stateInternal.iotCentral[property] = value;
 
         await this.flushState();
     }
@@ -80,7 +56,7 @@ export class StateService {
             this.stateInternal = await this.storage.get(this.stateFile);
             if (!this.stateInternal) {
                 this.stateInternal = {
-                    registration: {
+                    system: {
                         systemName: '',
                         systemId: ''
                     }

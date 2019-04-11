@@ -6,7 +6,7 @@ import { StorageService } from './storage';
 import { StateService } from './state';
 import { FileHandlerService } from './fileHandler';
 import { SubscriptionService } from './subscription';
-import { PeabodyProxyService } from './peabodyProxy';
+import { ClientProxyService } from './clientProxy';
 import { CameraService } from './camera';
 import { InferenceProcessorService } from './inferenceProcessor';
 import { DataStreamController } from './dataStreamProcessor';
@@ -21,7 +21,7 @@ export default [
     StateService,
     FileHandlerService,
     SubscriptionService,
-    PeabodyProxyService,
+    ClientProxyService,
     CameraService,
     InferenceProcessorService,
     DataStreamController,

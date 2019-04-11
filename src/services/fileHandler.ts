@@ -40,8 +40,8 @@ export class FileHandlerService {
 
         this.fileUploadFolder = this.config.get('fileUploadFolder') || defaultFileUploadFolder;
         this.unzipCommand = this.config.get('unzipCommand') || defaultUnzipCommand;
-        this.storageFolderPath = pathJoin((this.server.settings.app as any).peabodyDirectory, this.fileUploadFolder);
-        this.modelFolderPath = pathJoin((this.server.settings.app as any).peabodyDirectory, 'camera');
+        this.storageFolderPath = pathJoin((this.server.settings.app as any).hostRootDirectory, this.fileUploadFolder);
+        this.modelFolderPath = pathJoin((this.server.settings.app as any).hostRootDirectory, 'camera');
     }
 
     public async uploadAndVerifyModelFiles(file: any): Promise<boolean> {

@@ -76,8 +76,8 @@ debug.json
 **/common.js.map
 coverage.html
 
-# Peabody local service
+# AI Dev Kit local service
 storage
-peabody
+client
 configs/**
 assets/**

@@ -11,8 +11,8 @@ export function manifest(config?: any): ComposeManifest {
             app: {
                 usePortal: config.usePortal,
                 rootDirectory: pathResolve(__dirname, '..'),
-                peabodyDirectory: process.env.PEABODY_STORAGE || '/data/misc',
-                slogan: 'Peabody local service'
+                hostRootDirectory: process.env.HOST_ROOT || '/data/misc',
+                slogan: 'AI Dev Kit local service'
             }
         },
         services: [
