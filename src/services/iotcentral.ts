@@ -41,9 +41,6 @@ export const DeviceProperty = {
     RtspDataUrl: 'prop_rtsp_data_url'
 };
 
-const iotcClientFromConnectionString = AzureIotDeviceMqtt.clientFromConnectionString;
-const IotcMessage = AzureIotDevice.Message;
-
 const SECONDS_PER_MINUTE: number = (60);
 const SECONDS_PER_HOUR: number = (60 * 60);
 
@@ -72,11 +69,26 @@ export class IoTCentralService {
     private iotCentralDpsOperationsSuffix: string = defaultIotCentralDpsOperationsSuffix;
     private iotCentralExpiryHours: string = defaultIotCentralExpiryHours;
 
+    private iotCentralHubConnectionStringInternal: string = '';
+    private iotCentralProvisioningStatusInternal: string = '';
+    private iotCentralConnectionStatusInternal: string = '';
     private iotcClient: any = null;
     private iotcDeviceTwin: any = null;
     private iotcClientSendMeasurement: any = null;
     private iotcClientUpdateProperties: any = null;
     private iotcClientConnected: boolean = false;
+
+    public get iotCentralHubConnectionString() {
+        return this.iotCentralHubConnectionStringInternal;
+    }
+
+    public get iotCentralProvisioningStatus() {
+        return this.iotCentralProvisioningStatusInternal;
+    }
+
+    public get iotCentralConnectionStatus() {
+        return this.iotCentralConnectionStatusInternal;
+    }
 
     public async init(): Promise<void> {
         this.iotCentralDpsProvisionApiVersion = this.config.get('iotCentralDpsProvisionApiVersion') || defaultIotCentralDpsProvisionApiVersion;
@@ -113,7 +125,7 @@ export class IoTCentralService {
                 body: {
                     registrationId: iotCentralState.deviceId,
                     data: {
-                        iotcModelId: iotCentralState.templateId
+                        iotcModelId: `${iotCentralState.templateId}/${iotCentralState.templateVersion}`
                     }
                 },
                 json: true
@@ -150,7 +162,7 @@ export class IoTCentralService {
 
                     this.logger.log(['IoTCentralService', 'info'], `IoT Central dps hub assignment: ${iotcHub}`);
 
-                    await this.state.setIotCentralProperty('iotCentralHubConnectionString', `HostName=${iotcHub};DeviceId=${iotCentralState.deviceId};SharedAccessKey=${iotCentralState.deviceKey}`);
+                    this.iotCentralHubConnectionStringInternal = `HostName=${iotcHub};DeviceId=${iotCentralState.deviceId};SharedAccessKey=${iotCentralState.deviceKey}`;
 
                     result = true;
                 }
@@ -168,7 +180,7 @@ export class IoTCentralService {
             result = false;
         }
 
-        await this.state.setIotCentralProperty('iotCentralConnectionStatus', provisioningStatus);
+        this.iotCentralConnectionStatusInternal = provisioningStatus;
 
         return result;
     }
@@ -177,7 +189,7 @@ export class IoTCentralService {
         let result = true;
         let connectionStatus = `IoT Central successfully connected device: ${this.state.iotCentral.deviceId}`;
 
-        this.iotcClient = iotcClientFromConnectionString(this.state.iotCentral.iotCentralHubConnectionString);
+        this.iotcClient = AzureIotDeviceMqtt.clientFromConnectionString(this.iotCentralHubConnectionString);
         if (!this.iotcClient) {
             result = false;
         }
@@ -210,7 +222,7 @@ export class IoTCentralService {
             }
         }
 
-        await this.state.setIotCentralProperty('iotCentralProvisioningStatus', connectionStatus);
+        this.iotCentralProvisioningStatusInternal = connectionStatus;
 
         return result;
     }
@@ -221,7 +233,7 @@ export class IoTCentralService {
             return;
         }
 
-        const iotcMessage = new IotcMessage(JSON.stringify(data));
+        const iotcMessage = new AzureIotDevice.Message(JSON.stringify(data));
 
         try {
             await this.iotcClientSendMeasurement(iotcMessage);

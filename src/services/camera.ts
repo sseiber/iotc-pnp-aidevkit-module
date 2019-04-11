@@ -237,9 +237,10 @@ export class CameraService extends EventEmitter {
                     scopeId: this.state.iotCentral.scopeId,
                     deviceKey: this.state.iotCentral.deviceKey,
                     templateId: this.state.iotCentral.templateId,
-                    iotCentralHubConnectionString: this.state.iotCentral.iotCentralHubConnectionString,
-                    iotCentralProvisioningStatus: this.state.iotCentral.iotCentralProvisioningStatus,
-                    iotCentralConnectionStatus: this.state.iotCentral.iotCentralConnectionStatus
+                    templateVersion: this.state.iotCentral.templateVersion,
+                    iotCentralHubConnectionString: this.iotCentral.iotCentralHubConnectionString,
+                    iotCentralProvisioningStatus: this.iotCentral.iotCentralProvisioningStatus,
+                    iotCentralConnectionStatus: this.iotCentral.iotCentralConnectionStatus
                 }
             }
         };
