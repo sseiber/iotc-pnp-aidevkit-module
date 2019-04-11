@@ -58,7 +58,8 @@ export class CameraService extends EventEmitter {
     };
     private sessionToken: string = '';
     private ipcPort: string = defaultIpcPort;
-    private vamUrl: string = '';
+    private rtspVideoUrl: string = '';
+    private rtspVamUrl: string = '';
     private resolutions: string[] = [];
     private encoders: string[] = [];
     private bitRates: string[] = [];
@@ -195,7 +196,9 @@ export class CameraService extends EventEmitter {
 
         this.sessionToken = '';
         this.videoPreview = false;
+        this.rtspVideoUrl = '';
         this.vamProcessing = false;
+        this.rtspVamUrl = '';
 
         return {
             ...this.getConfiguration(),
@@ -213,8 +216,8 @@ export class CameraService extends EventEmitter {
                 deviceConfig: {
                     sessionToken: this.sessionToken,
                     ipAddresses: this.ipAddresses,
-                    rtspUrl: this.sessionToken ? `rtsp://${this.ipAddresses.cameraIpAddress}:${this.rtspVideoPort}/live` : '',
-                    vamUrl: this.sessionToken ? this.vamUrl : '',
+                    rtspVideoUrl: this.sessionToken ? this.rtspVideoUrl : '',
+                    rtspVamUrl: this.sessionToken ? this.rtspVamUrl : '',
                     resolution: this.sessionToken ? this.resolutions[this.videoSettings.resolutionSelectVal] : '',
                     resolutions: this.resolutions,
                     encoder: this.sessionToken ? this.encoders[this.videoSettings.encodeModeSelectVal] : '',
@@ -404,6 +407,7 @@ export class CameraService extends EventEmitter {
 
                 if (result === true) {
                     this.videoPreview = true;
+                    this.rtspVideoUrl = `rtsp://${this.ipAddresses.cameraIpAddress}:${this.rtspVideoPort}/live`;
                 }
             }
 
@@ -439,7 +443,7 @@ export class CameraService extends EventEmitter {
                     if (result === true) {
                         this.logger.log(['CameraService', 'info'], `Starting video stream processor`);
 
-                        result = await this.inferenceProcessor.startInferenceProcessor(this.vamUrl, `rtsp://${this.ipAddresses.cameraIpAddress}:${this.rtspVideoPort}/live`);
+                        result = await this.inferenceProcessor.startInferenceProcessor(this.rtspVamUrl, this.rtspVideoUrl);
                     }
                 }
             }
@@ -450,8 +454,8 @@ export class CameraService extends EventEmitter {
                 if (iotcResult === true) {
                     const liveProperties = {
                         [DeviceProperty.IpAddress]: this.ipAddresses.cameraIpAddress,
-                        [DeviceProperty.RtspVideoUrl]: this.sessionToken ? `rtsp://${this.ipAddresses.cameraIpAddress}:${this.rtspVideoPort}/live` : '',
-                        [DeviceProperty.RtspDataUrl]: this.sessionToken ? this.vamUrl : '',
+                        [DeviceProperty.RtspVideoUrl]: this.sessionToken ? this.rtspVideoUrl : '',
+                        [DeviceProperty.RtspDataUrl]: this.sessionToken ? this.rtspVamUrl : '',
                         [DeviceSetting.Resolution]: this.sessionToken ? this.resolutions[this.videoSettings.resolutionSelectVal] : '',
                         [DeviceSetting.Encoder]: this.sessionToken ? this.encoders[this.videoSettings.encodeModeSelectVal] : '',
                         [DeviceSetting.Bitrate]: this.sessionToken ? this.bitRates[this.videoSettings.bitRateSelectVal] : '',
@@ -528,7 +532,7 @@ export class CameraService extends EventEmitter {
             const response = await this.ipcGetRequest('/vam');
             const result = JSON.parse(response);
 
-            this.vamUrl = result.url || '';
+            this.rtspVamUrl = result.url || '';
 
             return result.status;
         }
