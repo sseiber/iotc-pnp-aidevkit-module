@@ -19,7 +19,11 @@ export class DataStreamController {
     }
 
     public async startDataStreamProcessor(dataStreamUrl: string): Promise<boolean> {
-        this.logger.log(['DataStreamController', 'info'], `Starting capture processes`);
+        if (!dataStreamUrl) {
+            this.logger.log(['DataStreamController', 'warning'], `Not starting inference processor because dataStreamUrl is empty`);
+        }
+
+        this.logger.log(['DataStreamController', 'info'], `Starting inference processor`);
 
         try {
             this.gstProcess = spawn(gstCommand, gstCommandArgs.replace('###DATA_STREAM_URL', dataStreamUrl).split(' '), { stdio: ['ignore', 'pipe', 'ignore'] });

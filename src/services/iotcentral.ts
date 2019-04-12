@@ -189,6 +189,11 @@ export class IoTCentralService {
         let result = true;
         let connectionStatus = `IoT Central successfully connected device: ${this.state.iotCentral.deviceId}`;
 
+        if (this.iotcClient) {
+            await promisify(this.iotcClient.close.bind(this.iotcClient))();
+            this.iotcClient = null;
+        }
+
         this.iotcClient = AzureIotDeviceMqtt.clientFromConnectionString(this.iotCentralHubConnectionString);
         if (!this.iotcClient) {
             result = false;

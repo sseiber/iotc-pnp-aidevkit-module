@@ -43,7 +43,11 @@ export class VideoStreamController {
     }
 
     public async startVideoStreamProcessor(videoStreamUrl: string): Promise<boolean> {
-        this.logger.log(['VideoStreamController', 'info'], `Starting capture processes`);
+        if (!videoStreamUrl) {
+            this.logger.log(['DataStreamController', 'warning'], `Not starting image capture processor because videoStreamUrl is empty`);
+        }
+
+        this.logger.log(['VideoStreamController', 'info'], `Starting image capture processes`);
 
         const videoSource = this.config.get('videoCaptureSource') === 'rtsp' ? videoStreamUrl : this.config.get('videoCaptureSource');
 
