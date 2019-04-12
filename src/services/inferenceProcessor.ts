@@ -96,10 +96,16 @@ export class InferenceProcessorService {
     }
 
     private async publishInference(inference) {
+        const trackTimeout = Date.now();
         this.lastImageData = null;
-        while (!this.lastImageData) {
+        while ((Date.now() - trackTimeout) < (1000 * 5) && this.lastImageData === null) {
             await sleep(10);
         }
+
+        this.subscription.publishInference({
+            inference,
+            imageData: this.lastImageData || Buffer.from('')
+        });
 
         const data = {
             inference: inference.inferences.length,
@@ -107,10 +113,5 @@ export class InferenceProcessorService {
         };
 
         forget(this.iotCentral.sendMeasurement, [DeviceTelemetry.Inference], data);
-
-        this.subscription.publishInference({
-            inference,
-            imageData: this.lastImageData
-        });
     }
 }

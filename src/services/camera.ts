@@ -736,7 +736,7 @@ export class CameraService extends EventEmitter {
             try {
                 const { stdout } = await promisify(exec)(ifConfigFilter, { encoding: 'utf8' });
 
-                this.logger.log(['ipcProvider', 'info'], `get ip stdout: ${stdout}`);
+                this.logger.log(['ipcProvider', 'info'], `Determined IP address: ${stdout}`);
 
                 cameraIpAddress = (stdout || '127.0.0.1').trim();
             }

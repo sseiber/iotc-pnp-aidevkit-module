@@ -101,6 +101,11 @@ export class IoTCentralService {
     }
 
     public async iotCentralDpsProvisionDevice(): Promise<boolean> {
+        if (this.config.get('noDPSProvisioning') === '1') {
+            this.logger.log(['IoTCentralService', 'info'], `Skipping DPS provisioning "noDPSProvisioning=1"`);
+            return false;
+        }
+
         const iotCentralState = this.state.iotCentral;
         let result = true;
         let provisioningStatus = `IoT Central successfully provisioned device: ${iotCentralState.deviceId}`;

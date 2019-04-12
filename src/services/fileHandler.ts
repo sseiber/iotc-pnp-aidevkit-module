@@ -88,7 +88,7 @@ export class FileHandlerService {
     }
 
     public async ensureModelFilesExist(modelFolder: string): Promise<any> {
-        this.logger.log(['FileHandler', 'info'], `Verifying .dlc file exists in: ${modelFolder}`);
+        this.logger.log(['FileHandler', 'info'], `Ensure .dlc file exists in: ${modelFolder}`);
 
         try {
             let dlcFile;
@@ -174,7 +174,7 @@ export class FileHandlerService {
             this.logger.log(['FileHandler', 'info'], `Removing zip package: ${destFilePath}`);
             await promisify(exec)(`rm -f ${destFilePath}`);
 
-            this.logger.log(['FileHandler', 'info'], `Verifying .dlc file exists in: ${destUnzipDir}`);
+            this.logger.log(['FileHandler', 'info'], `Done extracting in: ${destUnzipDir}`);
             const ensureResult = await this.ensureModelFilesExist(destUnzipDir);
 
             return ensureResult.dlcExists;
