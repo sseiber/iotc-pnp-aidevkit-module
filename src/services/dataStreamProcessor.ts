@@ -2,6 +2,7 @@ import { service, inject } from 'spryly';
 import { spawn } from 'child_process';
 import { LoggingService } from './logging';
 import { Transform } from 'stream';
+import { forget } from '../utils';
 
 const gstCommand = 'gst-launch-1.0';
 const gstCommandArgs = '-q rtspsrc location=###DATA_STREAM_URL protocols=tcp ! application/x-rtp, media=application ! fakesink dump=true';
@@ -41,9 +42,7 @@ export class DataStreamController {
             const frameProcessor = new FrameProcessor({});
 
             frameProcessor.on('inference', (inference: any) => {
-                (async () => {
-                    return this.handleDataInferenceCallback(inference);
-                })().catch();
+                forget(this.handleDataInferenceCallback, inference);
             });
 
             this.gstProcess.stdout.pipe(frameProcessor);

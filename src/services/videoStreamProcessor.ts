@@ -5,6 +5,7 @@ import { ConfigService } from './config';
 import * as _get from 'lodash.get';
 import { Transform } from 'stream';
 import { platform as osPlatform } from 'os';
+import { forget } from '../utils';
 
 const rtspVideoCaptureSource = 'rtsp';
 const ffmpegCommand = 'ffmpeg';
@@ -67,9 +68,7 @@ export class VideoStreamController {
             const frameProcessor = new FrameProcessor({});
 
             frameProcessor.on('jpeg', (jpegData: any) => {
-                (async () => {
-                    return this.handleVideoFrameCallback(jpegData);
-                })().catch();
+                forget(this.handleVideoFrameCallback, jpegData);
             });
 
             this.ffmpegProcess.stdout.pipe(frameProcessor);

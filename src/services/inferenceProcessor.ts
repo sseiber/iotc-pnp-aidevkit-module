@@ -61,15 +61,17 @@ export class InferenceProcessorService {
 
         if (inferences && Array.isArray(inferences)) {
             for (const inferenceItem of inferences) {
-                this.logger.log(['DataStreamController', 'info'], `Inference: `
-                    + `id:${_get(inferenceItem, 'id')} `
-                    + `"${_get(inferenceItem, 'display_name')}" `
-                    + `${_get(inferenceItem, 'confidence')}% `);
+                if (_get(inferenceItem, 'display_name') !== 'Negative') {
+                    this.logger.log(['DataStreamController', 'info'], `Inference: `
+                        + `id:${_get(inferenceItem, 'id')} `
+                        + `"${_get(inferenceItem, 'display_name')}" `
+                        + `${_get(inferenceItem, 'confidence')}% `);
+                }
             }
 
             const publishedInferences = inferences.reduce((publishedItems, inferenceItem) => {
                 const confidence = Number(_get(inferenceItem, 'confidence') || 0);
-                if (confidence >= this.confidenceThreshold) {
+                if (_get(inferenceItem, 'display_name') !== 'Negative' && confidence >= this.confidenceThreshold) {
                     publishedItems.push({
                         count: this.inferenceCount++,
                         ...inferenceItem
@@ -79,10 +81,12 @@ export class InferenceProcessorService {
                 return publishedItems;
             }, []);
 
-            await this.publishInference({
-                timestamp: Date.now(),
-                inferences: publishedInferences
-            });
+            if (publishedInferences.length > 0) {
+                await this.publishInference({
+                    timestamp: Date.now(),
+                    inferences: publishedInferences
+                });
+            }
         }
     }
 

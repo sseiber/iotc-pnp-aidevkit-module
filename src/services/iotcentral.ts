@@ -77,6 +77,7 @@ export class IoTCentralService {
     private iotcClientSendMeasurement: any = null;
     private iotcClientUpdateProperties: any = null;
     private iotcClientConnected: boolean = false;
+    private iotcTelemetryThrottleTimer: number = Date.now();
 
     public get iotCentralHubConnectionString() {
         return this.iotCentralHubConnectionStringInternal;
@@ -234,9 +235,11 @@ export class IoTCentralService {
 
     @bind
     public async sendMeasurement(measurementType: string, data: any) {
-        if (!data || !this.iotcClientConnected) {
+        if ((Date.now() - this.iotcTelemetryThrottleTimer) < 1000 || !data || !this.iotcClientConnected) {
             return;
         }
+
+        this.iotcTelemetryThrottleTimer = Date.now();
 
         const iotcMessage = new AzureIotDevice.Message(JSON.stringify(data));
 
