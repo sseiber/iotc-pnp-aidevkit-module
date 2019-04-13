@@ -2,7 +2,7 @@ import { service, inject } from 'spryly';
 import { spawn } from 'child_process';
 import { LoggingService } from './logging';
 import { Transform } from 'stream';
-import { forget } from '../utils';
+import { bind, forget } from '../utils';
 
 const gstCommand = 'gst-launch-1.0';
 const gstCommandArgs = '-q rtspsrc location=###DATA_STREAM_URL protocols=tcp ! application/x-rtp, media=application ! fakesink dump=true';
@@ -13,13 +13,17 @@ export class DataStreamController {
     private logger: LoggingService;
 
     private handleDataInferenceCallback: any = null;
+    private dataStreamUrl: string = '';
     private gstProcess: any = null;
 
     public setInferenceCallback(handleInference: any) {
         this.handleDataInferenceCallback = handleInference;
     }
 
+    @bind
     public async startDataStreamProcessor(dataStreamUrl: string): Promise<boolean> {
+        this.dataStreamUrl = dataStreamUrl;
+
         if (!dataStreamUrl) {
             this.logger.log(['DataStreamController', 'warning'], `Not starting inference processor because dataStreamUrl is empty`);
         }
@@ -31,7 +35,7 @@ export class DataStreamController {
 
             this.gstProcess.on('error', (error) => {
                 this.logger.log(['dataController', 'error'], `Error on gstProcess: ${error}`);
-                this.gstProcess = null;
+                this.restartController();
             });
 
             this.gstProcess.on('exit', (code, signal) => {
@@ -67,6 +71,20 @@ export class DataStreamController {
         process.kill();
 
         return;
+    }
+
+    private restartController() {
+        if (this.gstProcess === null) {
+            return;
+        }
+
+        this.gstProcess = null;
+
+        this.logger.log(['dataController', 'info'], `Abnormal exit, will attempt to restart in 5sec.`);
+
+        setTimeout(() => {
+            forget(this.startDataStreamProcessor, this.dataStreamUrl);
+        }, (1000 * 5));
     }
 }
 

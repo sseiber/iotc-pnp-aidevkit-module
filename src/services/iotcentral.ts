@@ -1,4 +1,5 @@
 import { service, inject } from 'spryly';
+import { Server } from 'hapi';
 import * as request from 'request';
 import * as _get from 'lodash.get';
 import * as crypto from 'crypto';
@@ -9,6 +10,12 @@ import { StateService } from './state';
 import { sleep, bind } from '../utils';
 import * as AzureIotDeviceMqtt from 'azure-iot-device-mqtt';
 import * as AzureIotDevice from 'azure-iot-device';
+
+export const MeasurementType = {
+    Telemetry: 'telemetry',
+    State: 'state',
+    Event: 'event'
+};
 
 export const DeviceTelemetry = {
     Inference: 'telemetry_inference'
@@ -23,22 +30,22 @@ export const DeviceEvent = {
     SessionLogin: 'event_session_login',
     SessionLogout: 'event_session_logout',
     InferenceProcessingStarted: 'event_inference_processing_started',
-    InferenceProcessingStopped: 'event_inference_proessing_stopped',
+    InferenceProcessingStopped: 'event_inference_processing_stopped',
     DeviceRestart: 'event_device_restart'
 };
 
 export const DeviceSetting = {
-    HdmiOutput: 'setting_hdmi_output',
-    Bitrate: 'setting_bitrate',
-    Encoder: 'setting_encoder',
-    Fps: 'setting_fps',
-    Resolution: 'setting_resolution'
+    HdmiOutput: 'setting_hdmi_output'
 };
 
 export const DeviceProperty = {
     IpAddress: 'prop_ip_address',
     RtspVideoUrl: 'prop_rtsp_video_url',
-    RtspDataUrl: 'prop_rtsp_data_url'
+    RtspDataUrl: 'prop_rtsp_data_url',
+    Bitrate: 'prop_bitrate',
+    Encoder: 'prop_encoder',
+    Fps: 'prop_fps',
+    Resolution: 'prop_resolution'
 };
 
 const SECONDS_PER_MINUTE: number = (60);
@@ -53,6 +60,9 @@ const defaultIotCentralExpiryHours: string = '2';
 
 @service('iotCentral')
 export class IoTCentralService {
+    @inject('$server')
+    private server: Server;
+
     @inject('logger')
     private logger: LoggingService;
 
@@ -62,6 +72,9 @@ export class IoTCentralService {
     @inject('state')
     private state: StateService;
 
+    private iotCentralScopeIdInternal: string = '';
+    private iotCentralTemplateIdInternal: string = '';
+    private iotCentralTemplateVersionInternal: string = '';
     private iotCentralDpsProvisionApiVersion: string = defaultIotCentralDpsProvisionApiVersion;
     private iotCentralDpsAssigningApiVersion: string = defaultIotCentralDpsAssigningApiVersion;
     private iotCentralDpsEndpoint: string = defaultIotCentralDpsEndpoint;
@@ -79,6 +92,18 @@ export class IoTCentralService {
     private iotcClientConnected: boolean = false;
     private iotcTelemetryThrottleTimer: number = Date.now();
 
+    public get iotCentralScopeId() {
+        return this.iotCentralScopeIdInternal;
+    }
+
+    public get iotCentralTemplateId() {
+        return this.iotCentralTemplateIdInternal;
+    }
+
+    public get iotCentralTemplateVersion() {
+        return this.iotCentralTemplateVersionInternal;
+    }
+
     public get iotCentralHubConnectionString() {
         return this.iotCentralHubConnectionStringInternal;
     }
@@ -92,19 +117,34 @@ export class IoTCentralService {
     }
 
     public async init(): Promise<void> {
+        this.iotCentralScopeIdInternal = this.config.get('iotCentralScopeId') || '';
+        this.iotCentralTemplateIdInternal = this.config.get('iotCentralTemplateId') || '';
+        this.iotCentralTemplateVersionInternal = this.config.get('iotCentralTemplateVersion') || '';
         this.iotCentralDpsProvisionApiVersion = this.config.get('iotCentralDpsProvisionApiVersion') || defaultIotCentralDpsProvisionApiVersion;
         this.iotCentralDpsAssigningApiVersion = this.config.get('iotCentralDpsAssigningApiVersion') || defaultIotCentralDpsAssigningApiVersion;
         this.iotCentralDpsEndpoint = this.config.get('iotCentralDpsEndpoint') || defaultIotCentralDpsEndpoint;
         this.iotCentralDpsRegistrationSuffix = this.config.get('iotCentralDpsRegistrationSuffix') || defaultIotCentralDpsRegistrationSuffix;
         this.iotCentralDpsOperationsSuffix = this.config.get('iotCentralDpsOperationsSuffix') || defaultIotCentralDpsOperationsSuffix;
         this.iotCentralExpiryHours = this.config.get('iotCentralExpiryHours') || defaultIotCentralExpiryHours;
+
+        this.server.decorate('server', 'connectToIoTCentral', this.connectToIoTCentral);
+    }
+
+    @bind
+    public async connectToIoTCentral(): Promise<void> {
+        const iotcResult = await this.iotCentralDpsProvisionDevice();
+
+        if (iotcResult === true) {
+            await this.connectIotcClient();
+        }
     }
 
     public async iotCentralDpsProvisionDevice(): Promise<boolean> {
-        if (this.config.get('noDPSProvisioning') === '1') {
-            this.logger.log(['IoTCentralService', 'info'], `Skipping DPS provisioning "noDPSProvisioning=1"`);
+        if (!this.config.get('enableIoTCentralProvisioning')) {
             return false;
         }
+
+        this.logger.log(['IoTCentralService', 'info'], `Enabling DPS provisioning through IoT Central: "enableIoTCentralProvisioning=1"`);
 
         const iotCentralState = this.state.iotCentral;
         let result = true;
@@ -114,12 +154,12 @@ export class IoTCentralService {
             this.logger.log(['IoTCentralService', 'info'], `Starting IoT Central provisioning for device: ${iotCentralState.deviceId}`);
 
             const expiry = (Date.now() - (SECONDS_PER_MINUTE * 5) + (SECONDS_PER_HOUR * Number(this.iotCentralExpiryHours)));
-            const sr = `${iotCentralState.scopeId}%2fregistrations%2f${iotCentralState.deviceId}`;
+            const sr = `${this.iotCentralScopeId}%2fregistrations%2f${iotCentralState.deviceId}`;
             const sig = this.computDerivedSymmetricKey(iotCentralState.deviceKey, `${sr}\n${expiry}`);
 
             const options = {
                 method: 'PUT',
-                url: this.iotCentralDpsEndpoint.replace('###SCOPEID', iotCentralState.scopeId).replace('###DEVICEID', iotCentralState.deviceId)
+                url: this.iotCentralDpsEndpoint.replace('###SCOPEID', this.iotCentralScopeId).replace('###DEVICEID', iotCentralState.deviceId)
                     + this.iotCentralDpsRegistrationSuffix.replace('###API_VERSION', this.iotCentralDpsProvisionApiVersion),
                 headers: {
                     'Accept': 'application/json',
@@ -131,7 +171,7 @@ export class IoTCentralService {
                 body: {
                     registrationId: iotCentralState.deviceId,
                     data: {
-                        iotcModelId: `${iotCentralState.templateId}/${iotCentralState.templateVersion}`
+                        iotcModelId: `${this.iotCentralTemplateId}/${this.iotCentralTemplateVersion}`
                     }
                 },
                 json: true
@@ -145,7 +185,7 @@ export class IoTCentralService {
 
             delete options.body;
             options.method = 'GET';
-            options.url = this.iotCentralDpsEndpoint.replace('###SCOPEID', iotCentralState.scopeId).replace('###DEVICEID', iotCentralState.deviceId)
+            options.url = this.iotCentralDpsEndpoint.replace('###SCOPEID', this.iotCentralScopeId).replace('###DEVICEID', iotCentralState.deviceId)
                 + this.iotCentralDpsOperationsSuffix.replace('###OPERATION_ID', operationId).replace('###API_VERSION', this.iotCentralDpsAssigningApiVersion);
 
             const errorCode = _get(response, 'errorCode');
@@ -191,7 +231,7 @@ export class IoTCentralService {
         return result;
     }
 
-    public async connectIotcClient(liveProperties: any): Promise<boolean> {
+    public async connectIotcClient(): Promise<boolean> {
         let result = true;
         let connectionStatus = `IoT Central successfully connected device: ${this.state.iotCentral.deviceId}`;
 
@@ -220,10 +260,7 @@ export class IoTCentralService {
 
                 this.iotcClientConnected = true;
 
-                await this.iotcClientSendDeviceProperties({
-                    ...this.state.iotCentral.properties,
-                    ...liveProperties
-                });
+                await this.iotcClientSendDeviceProperties(this.state.iotCentral.properties);
             }
             catch (ex) {
                 connectionStatus = `IoT Central connection error: ${ex.message}`;
@@ -240,7 +277,7 @@ export class IoTCentralService {
 
     @bind
     public async sendMeasurement(measurementType: string, data: any) {
-        if ((Date.now() - this.iotcTelemetryThrottleTimer) < 1000 || !data || !this.iotcClientConnected) {
+        if (measurementType === MeasurementType.Telemetry && ((Date.now() - this.iotcTelemetryThrottleTimer) < 1000 || !data || !this.iotcClientConnected)) {
             return;
         }
 

@@ -12,7 +12,7 @@ import { FileHandlerService } from './fileHandler';
 import { StateService } from './state';
 import { ICameraResult } from './clientTypes';
 import { InferenceProcessorService } from '../services/inferenceProcessor';
-import { IoTCentralService, DeviceEvent, DeviceState, DeviceProperty, DeviceSetting } from '../services/iotcentral';
+import { IoTCentralService, MeasurementType, DeviceState, DeviceEvent, DeviceSetting, DeviceProperty } from '../services/iotcentral';
 import { bind, sleep, forget } from '../utils';
 
 const defaultCameraUsername: string = 'admin';
@@ -109,12 +109,6 @@ export class CameraService extends EventEmitter {
 
     @bind
     public async startCamera(): Promise<void> {
-        // ###
-        // ### Need a way to reset services when a new image is deployed
-        // ###
-
-        // await this.resetCameraServices();
-
         await this.login();
     }
 
@@ -154,7 +148,7 @@ export class CameraService extends EventEmitter {
             };
         }
         else {
-            forget(this.iotCentral.sendMeasurement, 'event', { [DeviceEvent.SessionLogin]: this.sessionToken });
+            forget(this.iotCentral.sendMeasurement, MeasurementType.Event, { [DeviceEvent.SessionLogin]: this.sessionToken });
 
             return {
                 ...this.getConfiguration(),
@@ -169,16 +163,20 @@ export class CameraService extends EventEmitter {
         try {
             this.inferenceProcessor.stopInferenceProcessor();
 
-            for (let iLogoutAttempts = 0; status === false && iLogoutAttempts < 3; ++iLogoutAttempts) {
-                try {
-                    status = await this.ipcPostRequest('/logout', {});
-                    break;
-                }
-                catch (ex) {
-                    if (ex.code !== 'ESOCKETTIMEDOUT') {
-                        throw new Error(ex);
+            if (this.sessionToken) {
+                for (let iLogoutAttempts = 0; status === false && iLogoutAttempts < 3; ++iLogoutAttempts) {
+                    try {
+                        status = await this.ipcPostRequest('/logout', {});
+                        break;
+                    }
+                    catch (ex) {
+                        if (ex.code !== 'ESOCKETTIMEDOUT') {
+                            throw new Error(ex);
+                        }
                     }
                 }
+
+                forget(this.iotCentral.sendMeasurement, MeasurementType.Event, { [DeviceEvent.SessionLogout]: this.sessionToken });
             }
 
             status = true;
@@ -188,11 +186,6 @@ export class CameraService extends EventEmitter {
 
             status = false;
         }
-
-        forget(this.iotCentral.sendMeasurement, 'event', {
-            [DeviceEvent.SessionLogout]: this.sessionToken,
-            [DeviceEvent.InferenceProcessingStopped]: '0'
-        });
 
         this.sessionToken = '';
         this.videoPreview = false;
@@ -205,7 +198,7 @@ export class CameraService extends EventEmitter {
             status,
             title: 'Logout'
         };
-}
+    }
 
     public getConfiguration(): ICameraResult {
         return {
@@ -231,13 +224,13 @@ export class CameraService extends EventEmitter {
                     vamProcessing: this.vamProcessing
                 },
                 iotcConfig: {
-                    systemName: this.state.iotCentral.systemName,
-                    systemId: this.state.iotCentral.systemId,
+                    systemName: this.state.system.systemName,
+                    systemId: this.state.system.systemId,
                     deviceId: this.state.iotCentral.deviceId,
-                    scopeId: this.state.iotCentral.scopeId,
+                    scopeId: this.iotCentral.iotCentralScopeId,
                     deviceKey: this.state.iotCentral.deviceKey,
-                    templateId: this.state.iotCentral.templateId,
-                    templateVersion: this.state.iotCentral.templateVersion,
+                    templateId: this.iotCentral.iotCentralTemplateId,
+                    templateVersion: this.iotCentral.iotCentralTemplateVersion,
                     iotCentralHubConnectionString: this.iotCentral.iotCentralHubConnectionString,
                     iotCentralProvisioningStatus: this.iotCentral.iotCentralProvisioningStatus,
                     iotCentralConnectionStatus: this.iotCentral.iotCentralConnectionStatus
@@ -252,21 +245,18 @@ export class CameraService extends EventEmitter {
         try {
             status = await this.fileHandler.uploadAndVerifyModelFiles(file);
 
-            if (status) {
+            if (status === true) {
                 await this.logout();
-                status = true;
-            }
 
-            if (status) {
                 status = await this.fileHandler.changeModelFiles(file);
             }
 
-            if (status) {
+            if (status === true) {
                 const result = await this.login();
                 status = result.status;
             }
 
-            if (status) {
+            if (status === true) {
                 this.server.publish('/api/v1/subscription/model', this.modelFiles);
             }
         }
@@ -408,7 +398,7 @@ export class CameraService extends EventEmitter {
 
                 if (result === true) {
                     this.videoPreview = true;
-                    this.rtspVideoUrl = `rtsp://${this.ipAddresses.cameraIpAddress}:${this.rtspVideoPort}/live`;
+                    this.rtspVideoUrl = this.getRtspVideoUrl();
                 }
             }
 
@@ -442,37 +432,26 @@ export class CameraService extends EventEmitter {
                     }
 
                     if (result === true) {
-                        this.logger.log(['CameraService', 'info'], `Starting video stream processor`);
+                        const activeDeviceSettings = {
+                            [DeviceProperty.IpAddress]: this.ipAddresses.cameraIpAddress,
+                            [DeviceProperty.RtspVideoUrl]: this.sessionToken ? this.rtspVideoUrl : '',
+                            [DeviceProperty.RtspDataUrl]: this.sessionToken ? this.rtspVamUrl : '',
+                            [DeviceProperty.Resolution]: this.sessionToken ? this.resolutions[this.videoSettings.resolutionSelectVal] : '',
+                            [DeviceProperty.Encoder]: this.sessionToken ? this.encoders[this.videoSettings.encodeModeSelectVal] : '',
+                            [DeviceProperty.Bitrate]: this.sessionToken ? this.bitRates[this.videoSettings.bitRateSelectVal] : '',
+                            [DeviceProperty.Fps]: this.sessionToken ? this.frameRates[this.videoSettings.fpsSelectVal] : '',
+                            [DeviceSetting.HdmiOutput]: this.videoPreview ? 1 : 0,
+                            [DeviceState.InferenceProcessor]: this.vamProcessing ? 'On' : 'Off',
+                            [DeviceState.Session]: this.sessionToken ? 'Active' : 'Inactive'
+                        };
+
+                        forget(this.iotCentral.sendMeasurement, MeasurementType.Event, activeDeviceSettings);
+
+                        this.logger.log(['CameraService', 'info'], `Starting inference processing service`);
 
                         result = await this.inferenceProcessor.startInferenceProcessor(this.rtspVamUrl, this.rtspVideoUrl);
                     }
                 }
-            }
-
-            try {
-                const iotcResult = await this.iotCentral.iotCentralDpsProvisionDevice();
-
-                if (iotcResult === true) {
-                    const liveProperties = {
-                        [DeviceProperty.IpAddress]: this.ipAddresses.cameraIpAddress,
-                        [DeviceProperty.RtspVideoUrl]: this.sessionToken ? this.rtspVideoUrl : '',
-                        [DeviceProperty.RtspDataUrl]: this.sessionToken ? this.rtspVamUrl : '',
-                        [DeviceSetting.Resolution]: this.sessionToken ? this.resolutions[this.videoSettings.resolutionSelectVal] : '',
-                        [DeviceSetting.Encoder]: this.sessionToken ? this.encoders[this.videoSettings.encodeModeSelectVal] : '',
-                        [DeviceSetting.Bitrate]: this.sessionToken ? this.bitRates[this.videoSettings.bitRateSelectVal] : '',
-                        [DeviceSetting.Fps]: this.sessionToken ? this.frameRates[this.videoSettings.fpsSelectVal] : '',
-                        [DeviceSetting.HdmiOutput]: this.videoPreview ? 1 : 0,
-                        [DeviceState.InferenceProcessor]: this.vamProcessing ? 'On' : 'Off',
-                        [DeviceState.Session]: this.sessionToken ? 'Active' : 'Inactive'
-                    };
-
-                    await this.iotCentral.connectIotcClient(liveProperties);
-
-                    forget(this.iotCentral.sendMeasurement, 'event', { [DeviceEvent.InferenceProcessingStarted]: '1' });
-                }
-            }
-            catch (ex) {
-                // eat exception and continue
             }
 
             return result;
@@ -544,21 +523,9 @@ export class CameraService extends EventEmitter {
         }
     }
 
-    // private async getRtspVideoUrl(): Promise<boolean> {
-    //     try {
-    //         const response = await this.ipcGetRequest('/preview');
-    //         const result = JSON.parse(response);
-
-    //         this.rtspUrl = result.url || '';
-
-    //         return result.status;
-    //     }
-    //     catch (ex) {
-    //         this.logger.log(['CameraService', 'error'], ex.message);
-
-    //         return false;
-    //     }
-    // }
+    private getRtspVideoUrl(): string {
+        return `rtsp://${this.ipAddresses.cameraIpAddress}:${this.rtspVideoPort}/live`;
+    }
 
     private async ipcLogin(): Promise<boolean> {
         try {

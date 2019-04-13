@@ -4,7 +4,7 @@ import { ConfigService } from './config';
 import { SubscriptionService } from '../services/subscription';
 import { DataStreamController } from '../services/dataStreamProcessor';
 import { VideoStreamController } from '../services/videoStreamProcessor';
-import { IoTCentralService, DeviceTelemetry } from '../services/iotcentral';
+import { IoTCentralService, DeviceTelemetry, DeviceEvent, MeasurementType } from '../services/iotcentral';
 import { sleep, bind, forget } from '../utils';
 import * as _get from 'lodash.get';
 
@@ -47,12 +47,18 @@ export class InferenceProcessorService {
             result = await this.videoStreamController.startVideoStreamProcessor(rtspVideoUrl);
         }
 
+        if (result === true) {
+            forget(this.iotCentral.sendMeasurement, MeasurementType.Event, { [DeviceEvent.InferenceProcessingStarted]: '1' });
+        }
+
         return result;
     }
 
     public stopInferenceProcessor() {
         this.videoStreamController.stopVideoStreamProcessor();
         this.dataStreamController.stopDataStreamProcessor();
+
+        forget(this.iotCentral.sendMeasurement, MeasurementType.Event, { [DeviceEvent.InferenceProcessingStopped]: '0' });
     }
 
     @bind
@@ -112,6 +118,6 @@ export class InferenceProcessorService {
             inferences: inference.inferences
         };
 
-        forget(this.iotCentral.sendMeasurement, [DeviceTelemetry.Inference], data);
+        forget(this.iotCentral.sendMeasurement, MeasurementType.Telemetry, [DeviceTelemetry.Inference], data);
     }
 }

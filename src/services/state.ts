@@ -20,7 +20,7 @@ export class StateService {
     private stateFile;
 
     public get system(): any {
-        return this.stateInternal.system;
+        return this.stateInternal.system || {};
     }
 
     public get iotCentral(): any {
@@ -34,11 +34,11 @@ export class StateService {
 
         await this.loadState();
 
-        if (!this.stateInternal.systemName) {
+        if (!this.stateInternal.system.systemName) {
             this.stateInternal.system.systemName = uuidV4();
         }
 
-        if (!this.stateInternal.systemId) {
+        if (!this.stateInternal.system.systemId) {
             this.stateInternal.system.systemId = uuidV4();
         }
 

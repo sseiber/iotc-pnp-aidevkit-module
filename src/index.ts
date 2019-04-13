@@ -46,6 +46,7 @@ async function start() {
 
         server.log(['startup', 'info'], `✅ Server starting camera initialzation`);
 
+        await (server as any).connectToIoTCentral();
         await (server as any).startCamera();
 
         server.publish(`/api/v1/subscription/up`, {});
