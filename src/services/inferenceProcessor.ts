@@ -127,11 +127,11 @@ export class InferenceProcessorService {
             imageData: this.lastImageData || Buffer.from('')
         });
 
-        const data = {
-            count: inference.inferences.length,
-            classes: inference.inferences.map(inferenceItem => _get(inferenceItem, 'display_name') || 'Unkonwn')
-        };
+        // const data = {
+        //     count: inference.inferences.length,
+        //     classes: inference.inferences.map(inferenceItem => _get(inferenceItem, 'display_name') || 'Unkonwn')
+        // };
 
-        forget(this.iotCentral.sendMeasurement, MessageType.Telemetry, { [DeviceTelemetry.Inference]: data });
+        forget(this.iotCentral.sendMeasurement, MessageType.Telemetry, { [DeviceTelemetry.Inference]: inference.inferences.length });
     }
 }
