@@ -1,6 +1,6 @@
 {
   "name": "peabody-local-service",
-  "version": "1.0.69",
+  "version": "1.0.70",
   "description": "Local service for AI Dev Kit",
   "main": "index.js",
   "config": {
