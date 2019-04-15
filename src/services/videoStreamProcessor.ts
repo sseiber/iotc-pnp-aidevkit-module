@@ -5,12 +5,12 @@ import { ConfigService } from './config';
 import * as _get from 'lodash.get';
 import { Transform } from 'stream';
 import { platform as osPlatform } from 'os';
+import { bind, forget } from '../utils';
 
 const rtspVideoCaptureSource = 'rtsp';
 const ffmpegCommand = 'ffmpeg';
 const ffmpegCaptureCommandArgsMac = '-f avfoundation -framerate 15 -video_device_index ###VIDEO_SOURCE -i default -loglevel quiet -an -f image2pipe -vf scale=640:360,fps=1/2 -q 1 pipe:1';
 const ffmpegCaptureCommandArgsLinux = '-f video4linux2 -i ###VIDEO_SOURCE -framerate 15 -loglevel quiet -an -image2pipe -vf scale=640:360,fps=1/2 -q 1 pipe:1';
-// const ffmpegRtspCommandArgs = '-i ###VIDEO_SOURCE -loglevel quiet -an -f image2pipe -vf scale=640:360,fps=1/2 -q 1 pipe:1';
 const ffmpegRtspCommandArgs = '-i ###VIDEO_SOURCE -loglevel quiet -an -f image2pipe -vf fps=1/2 -q 1 pipe:1';
 
 @service('videoStreamController')
@@ -22,6 +22,7 @@ export class VideoStreamController {
     private config: ConfigService;
 
     private handleVideoFrameCallback: any = null;
+    private videoStreamUrl: string = '';
     private videoCaptureSource: string = rtspVideoCaptureSource;
     private ffmpegProcess: any = null;
     private ffmpegCommandArgs: string = '';
@@ -42,17 +43,24 @@ export class VideoStreamController {
         this.handleVideoFrameCallback = handleVideoFrame;
     }
 
+    @bind
     public async startVideoStreamProcessor(videoStreamUrl: string): Promise<boolean> {
-        this.logger.log(['VideoStreamController', 'info'], `Starting capture processes`);
+        this.videoStreamUrl = videoStreamUrl;
 
-        const videoSource = this.config.get('videoCaptureSource') === 'rtsp' ? videoStreamUrl : this.config.get('videoCaptureSource');
+        if (!videoStreamUrl) {
+            this.logger.log(['DataStreamController', 'warning'], `Not starting image capture processor because videoStreamUrl is empty`);
+        }
+
+        this.logger.log(['VideoStreamController', 'info'], `Starting image capture processor`);
+
+        const videoSource = this.videoCaptureSource === rtspVideoCaptureSource ? videoStreamUrl : this.videoCaptureSource;
 
         try {
             this.ffmpegProcess = spawn(ffmpegCommand, this.ffmpegCommandArgs.replace('###VIDEO_SOURCE', videoSource).split(' '), { stdio: ['ignore', 'pipe', 'ignore'] });
 
             this.ffmpegProcess.on('error', (error) => {
                 this.logger.log(['videoController', 'error'], `Error on ffmpegProcess: ${error}`);
-                this.ffmpegProcess = null;
+                this.restartController();
             });
 
             this.ffmpegProcess.on('exit', (code, signal) => {
@@ -63,9 +71,7 @@ export class VideoStreamController {
             const frameProcessor = new FrameProcessor({});
 
             frameProcessor.on('jpeg', (jpegData: any) => {
-                (async () => {
-                    return this.handleVideoFrameCallback(jpegData);
-                })().catch();
+                forget(this.handleVideoFrameCallback, jpegData);
             });
 
             this.ffmpegProcess.stdout.pipe(frameProcessor);
@@ -90,6 +96,20 @@ export class VideoStreamController {
         process.kill();
 
         return;
+    }
+
+    private restartController() {
+        if (this.ffmpegProcess === null) {
+            return;
+        }
+
+        this.ffmpegProcess = null;
+
+        this.logger.log(['dataController', 'info'], `Abnormal exit, will attempt to restart in 5sec.`);
+
+        setTimeout(() => {
+            forget(this.startVideoStreamProcessor, this.videoStreamUrl);
+        }, (1000 * 5));
     }
 }
 

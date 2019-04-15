@@ -87,29 +87,24 @@ export class FileHandlerService {
         return false;
     }
 
-    public async ensureModelFilesExist(modelFolder: string): Promise<any> {
-        this.logger.log(['FileHandler', 'info'], `Verifying .dlc file exists in: ${modelFolder}`);
+    public async ensureModelFilesExist(modelFolder: string): Promise<string> {
+        this.logger.log(['FileHandler', 'info'], `Ensure .dlc file exists in: ${modelFolder}`);
+
+        let dlcFile = '';
 
         try {
-            let dlcFile;
             const modelFiles = await fse.readdir(modelFolder);
             if (modelFiles) {
                 dlcFile = modelFiles.find(file => (file || '').slice(-4) === '.dlc');
             }
 
-            return {
-                dlcExists: dlcFile ? true : false,
-                modelFiles: dlcFile ? modelFiles : []
-            };
+            return dlcFile;
         }
         catch (ex) {
             this.logger.log(['FileHandler', 'error'], `Error enumerating model files: ${ex.message}`);
         }
 
-        return {
-            dlcExists: false,
-            modelFiles: []
-        };
+        return dlcFile;
     }
 
     private async saveModelPackage(file: any): Promise<boolean> {
@@ -174,10 +169,10 @@ export class FileHandlerService {
             this.logger.log(['FileHandler', 'info'], `Removing zip package: ${destFilePath}`);
             await promisify(exec)(`rm -f ${destFilePath}`);
 
-            this.logger.log(['FileHandler', 'info'], `Verifying .dlc file exists in: ${destUnzipDir}`);
-            const ensureResult = await this.ensureModelFilesExist(destUnzipDir);
+            this.logger.log(['FileHandler', 'info'], `Done extracting in: ${destUnzipDir}`);
+            const dlcFile = await this.ensureModelFilesExist(destUnzipDir);
 
-            return ensureResult.dlcExists;
+            return dlcFile !== '';
         }
         catch (ex) {
             this.logger.log(['FileHandler', 'error'], `Error extracting files: ${ex.message}`);
