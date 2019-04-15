@@ -62,7 +62,7 @@ export class ClientRoutes extends RoutePlugin {
 
     @route({
         method: 'POST',
-        path: '/api/v1/client/video',
+        path: '/api/v1/client/camera',
         options: {
             auth: {
                 strategies: ['client-jwt', 'client-localnetwork'],
@@ -71,136 +71,15 @@ export class ClientRoutes extends RoutePlugin {
                 }
             },
             tags: ['client'],
-            description: 'Configure video out settings (resolution, encoder, bitrate, fps)'
+            description: 'Configure camera settings'
         }
     })
     // @ts-ignore (request)
-    public async postVideo(request: Request, h: ResponseToolkit) {
+    public async postCamera(request: Request, h: ResponseToolkit) {
         try {
-            const payloadSettings = _get(request, 'payload');
-            const videoSettings = {
-                resolutionSelectVal: this.camera.currentResolutionSelectVal,
-                encodeModeSelectVal: this.camera.currentEncodeModeSelectVal,
-                bitRateSelectVal: this.camera.currentBitRateSelectVal,
-                fpsSelectVal: this.camera.currentFpsSelectVal,
-                displayOut: this.camera.currentDisplayOutVal,
-                ...payloadSettings
-            };
+            const cameraSettings = _get(request, 'payload');
 
-            await this.camera.configureDisplayOut(videoSettings);
-
-            return h.response().code(201);
-        }
-        catch (ex) {
-            throw Boom.badRequest(ex.message);
-        }
-    }
-
-    @route({
-        method: 'POST',
-        path: '/api/v1/client/preview',
-        options: {
-            auth: {
-                strategies: ['client-jwt', 'client-localnetwork'],
-                access: {
-                    scope: ['api-client', 'admin']
-                }
-            },
-            tags: ['client'],
-            description: 'Turn video preview (HDMI out) on/off'
-        }
-    })
-    // @ts-ignore (request)
-    public async postPreview(request: Request, h: ResponseToolkit) {
-        try {
-            const switchStatus = _get(request, 'payload.switchStatus');
-
-            const result = await this.camera.togglePreview(switchStatus || false);
-
-            return h.response(result).code(201);
-        }
-        catch (ex) {
-            throw Boom.badRequest(ex.message);
-        }
-    }
-
-    @route({
-        method: 'POST',
-        path: '/api/v1/client/vam',
-        options: {
-            auth: {
-                strategies: ['client-jwt', 'client-localnetwork'],
-                access: {
-                    scope: ['api-client', 'admin']
-                }
-            },
-            tags: ['client'],
-            description: 'Turn the inferencing engine (VAM) on/off'
-        }
-    })
-    // @ts-ignore (request)
-    public async postVam(request: Request, h: ResponseToolkit) {
-        try {
-            const switchStatus = _get(request, 'payload.switchStatus');
-
-            await this.camera.toggleVam(switchStatus || false);
-
-            return h.response().code(201);
-        }
-        catch (ex) {
-            throw Boom.badRequest(ex.message);
-        }
-    }
-
-    @route({
-        method: 'POST',
-        path: '/api/v1/client/overlay',
-        options: {
-            auth: {
-                strategies: ['client-jwt', 'client-localnetwork'],
-                access: {
-                    scope: ['api-client', 'admin']
-                }
-            },
-            tags: ['client'],
-            description: 'Turn inference overlay (ROI boxes) on/off'
-        }
-    })
-    // @ts-ignore (request)
-    public async postOverlay(request: Request, h: ResponseToolkit) {
-        try {
-            const switchStatus = _get(request, 'payload.switchStatus');
-
-            await this.camera.toggleOverlay(switchStatus || false);
-
-            return h.response().code(201);
-        }
-        catch (ex) {
-            throw Boom.badRequest(ex.message);
-        }
-    }
-
-    @route({
-        method: 'POST',
-        path: '/api/v1/client/overlayconfig',
-        options: {
-            auth: {
-                strategies: ['client-jwt', 'client-localnetwork'],
-                access: {
-                    scope: ['api-client', 'admin']
-                }
-            },
-            tags: ['client'],
-            description: 'Configure inference overlay type and text'
-        }
-    })
-    // @ts-ignore (request)
-    public async postOverlayConfig(request: Request, h: ResponseToolkit) {
-        try {
-            const overlayType = _get(request, 'payload.type') || 'inference';
-            const overlayText = _get(request, 'payload.text');
-
-            await this.camera.configureOverlay(overlayType, overlayText);
+            await this.camera.setCameraSettings(cameraSettings);
 
             return h.response().code(201);
         }

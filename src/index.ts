@@ -37,21 +37,22 @@ async function start() {
 
         await server.start();
 
-        server.log(['startup', 'info'], `✅ Server started`);
+        server.log(['startup', 'info'], `✅ Core server started`);
         server.log(['startup', 'info'], `🌎 ${server.info.uri}`);
         server.log(['startup', 'info'], ` > Hapi version: ${server.version}`);
         server.log(['startup', 'info'], ` > Plugins: [${Object.keys(server.registrations).join(', ')}]`);
         server.log(['startup', 'info'], ` > Machine: ${osPlatform()}, ${osCpus().length} core, ` +
             `freemem=${(osFreeMem() / 1024 / 1024).toFixed(0)}mb, totalmem=${(osTotalMem() / 1024 / 1024).toFixed(0)}mb`);
 
-        server.log(['startup', 'info'], `✅ Server starting camera initialzation`);
-
+        server.log(['startup', 'info'], `👨‍💻 Server starting IoT Central provisioning`);
         await (server as any).connectToIoTCentral();
+        server.log(['startup', 'info'], `👩‍💻 Server finished IoT Central provisioning`);
+
+        server.log(['startup', 'info'], `📷 Server starting camera initialzation`);
         await (server as any).startCamera();
+        server.log(['startup', 'info'], `📸 Server finished camera initialization`);
 
         server.publish(`/api/v1/subscription/up`, {});
-
-        server.log(['startup', 'info'], `✅ Server finished camera initialization`);
     }
     catch (error) {
         // tslint:disable-next-line:no-console

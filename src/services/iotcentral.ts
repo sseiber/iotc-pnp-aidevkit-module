@@ -3,7 +3,6 @@ import { Server } from 'hapi';
 import * as request from 'request';
 import * as _get from 'lodash.get';
 import * as crypto from 'crypto';
-import { promisify } from 'util';
 import { LoggingService } from './logging';
 import { ConfigService } from './config';
 import { StateService } from './state';
@@ -11,10 +10,11 @@ import { sleep, bind } from '../utils';
 import * as AzureIotDeviceMqtt from 'azure-iot-device-mqtt';
 import * as AzureIotDevice from 'azure-iot-device';
 
-export const MeasurementType = {
+export const MessageType = {
     Telemetry: 'telemetry',
     State: 'state',
-    Event: 'event'
+    Event: 'event',
+    Setting: 'setting'
 };
 
 export const DeviceTelemetry = {
@@ -31,11 +31,14 @@ export const DeviceEvent = {
     SessionLogout: 'event_session_logout',
     InferenceProcessingStarted: 'event_inference_processing_started',
     InferenceProcessingStopped: 'event_inference_processing_stopped',
+    VideoModelChange: 'event_video_model_change',
     DeviceRestart: 'event_device_restart'
 };
 
 export const DeviceSetting = {
-    HdmiOutput: 'setting_hdmi_output'
+    HdmiOutput: 'setting_hdmi_output',
+    InferenceThreshold: 'setting_inference_threshold',
+    VideoModelUrl: 'setting_video_model_url'
 };
 
 export const DeviceProperty = {
@@ -46,6 +49,12 @@ export const DeviceProperty = {
     Encoder: 'prop_encoder',
     Fps: 'prop_fps',
     Resolution: 'prop_resolution'
+};
+
+export const DeviceCommand = {
+    StartSession: 'command_start_session',
+    EndSession: 'command_end_session',
+    StartTrainingMode: 'command_start_training_mode'
 };
 
 const SECONDS_PER_MINUTE: number = (60);
@@ -87,10 +96,10 @@ export class IoTCentralService {
     private iotCentralConnectionStatusInternal: string = '';
     private iotcClient: any = null;
     private iotcDeviceTwin: any = null;
-    private iotcClientSendMeasurement: any = null;
-    private iotcClientUpdateProperties: any = null;
     private iotcClientConnected: boolean = false;
     private iotcTelemetryThrottleTimer: number = Date.now();
+    private handleHdmiOutputSettingChangeCallback: any = null;
+    private handleInferenceThresholdSettingChangeCallback: any = null;
 
     public get iotCentralScopeId() {
         return this.iotCentralScopeIdInternal;
@@ -141,6 +150,11 @@ export class IoTCentralService {
 
     public async iotCentralDpsProvisionDevice(): Promise<boolean> {
         if (!this.config.get('enableIoTCentralProvisioning')) {
+            return false;
+        }
+
+        if (!_get(this.state, 'iotCentral.deviceId')) {
+            this.logger.log(['IoTCentralService', 'warning'], `Missing device state configuration - skipping IoT Central DPS provisioning`);
             return false;
         }
 
@@ -236,7 +250,7 @@ export class IoTCentralService {
         let connectionStatus = `IoT Central successfully connected device: ${this.state.iotCentral.deviceId}`;
 
         if (this.iotcClient) {
-            await promisify(this.iotcClient.close.bind(this.iotcClient))();
+            await this.iotcClient.close();
             this.iotcClient = null;
         }
 
@@ -247,20 +261,18 @@ export class IoTCentralService {
 
         if (result === true) {
             try {
-                await promisify(this.iotcClient.open.bind(this.iotcClient))();
+                await this.iotcClient.open();
 
                 this.iotcClient.on('error', this.onIotcClientError);
 
-                this.iotcClient.onDeviceMethod('start_training_mode', this.iotcClientStartTraining);
+                this.iotcClient.onDeviceMethod(DeviceCommand.StartTrainingMode, this.iotcClientStartTraining);
 
-                this.iotcDeviceTwin = await promisify(this.iotcClient.getTwin.bind(this.iotcClient))();
-
-                this.iotcClientSendMeasurement = promisify(this.iotcClient.sendEvent.bind(this.iotcClient));
-                this.iotcClientUpdateProperties = promisify(this.iotcDeviceTwin.properties.reported.update.bind(this.iotcDeviceTwin.properties.reported));
+                this.iotcDeviceTwin = await this.iotcClient.getTwin();
+                this.iotcDeviceTwin.on('properties.desired', this.onNewDeviceProperties);
 
                 this.iotcClientConnected = true;
 
-                await this.iotcClientSendDeviceProperties(this.state.iotCentral.properties);
+                await this.updateDeviceProperties(this.state.iotCentral.properties);
             }
             catch (ex) {
                 connectionStatus = `IoT Central connection error: ${ex.message}`;
@@ -276,8 +288,12 @@ export class IoTCentralService {
     }
 
     @bind
-    public async sendMeasurement(measurementType: string, data: any) {
-        if (measurementType === MeasurementType.Telemetry && ((Date.now() - this.iotcTelemetryThrottleTimer) < 1000 || !data || !this.iotcClientConnected)) {
+    public async sendMeasurement(messageType: string, data: any) {
+        if (!data || !this.iotcClientConnected) {
+            return;
+        }
+
+        if (messageType === MessageType.Telemetry && ((Date.now() - this.iotcTelemetryThrottleTimer) < 1000 || !data || !this.iotcClientConnected)) {
             return;
         }
 
@@ -286,27 +302,106 @@ export class IoTCentralService {
         const iotcMessage = new AzureIotDevice.Message(JSON.stringify(data));
 
         try {
-            await this.iotcClientSendMeasurement(iotcMessage);
+            // await this.iotcClientSendMeasurement(iotcMessage);
+            await this.iotcClient.sendEvent(iotcMessage);
 
-            this.logger.log(['IoTCentralService', 'info'], `Device ${measurementType} telemmetry sent`);
+            this.logger.log(['IoTCentralService', 'info'], `Device ${messageType} message sent`);
         }
         catch (ex) {
             this.logger.log(['IoTCentralService', 'error'], `sendMeasurement: ${ex.message}`);
         }
     }
 
-    public async iotcClientSendDeviceProperties(properties: any) {
+    @bind
+    public async updateDeviceProperties(properties: any): Promise<void> {
         if (!properties || !this.iotcClientConnected) {
             return;
         }
 
         try {
-            await this.iotcClientUpdateProperties(properties);
+            await new Promise((resolve, reject) => {
+                this.iotcDeviceTwin.properties.reported.update(properties, (error) => {
+                    if (error) {
+                        return reject(error);
+                    }
+
+                    return resolve();
+                });
+            });
 
             this.logger.log(['IoTCentralService', 'info'], `Device live properties updated`);
         }
         catch (ex) {
             this.logger.log(['IoTCentralService', 'error'], `Error while updating client properties: ${ex.message}`);
+        }
+    }
+
+    public setHdmiOutputSettingChangeCallback(handleHdmiOutputSettingChangeCallback: any) {
+        this.handleHdmiOutputSettingChangeCallback = handleHdmiOutputSettingChangeCallback;
+    }
+
+    public setInferenceThresholdSettingChangeCallback(handleInferenceThresholdSettingChange: any) {
+        this.handleInferenceThresholdSettingChangeCallback = handleInferenceThresholdSettingChange;
+    }
+
+    private async handleVideoModelUrlSettingChange(newValue): Promise<any> {
+        this.logger.log(['IoTCentralService', 'info'], `Handle property change for VideoModelUrl setting`);
+
+        return {
+            value: newValue,
+            status: 'completed'
+        };
+    }
+
+    @bind
+    private async onNewDeviceProperties(desiredChangedSettings: any) {
+        for (const setting in desiredChangedSettings) {
+            if (!desiredChangedSettings.hasOwnProperty(setting)) {
+                continue;
+            }
+
+            if (setting === '$version') {
+                continue;
+            }
+
+            const prop = desiredChangedSettings[setting];
+            if (!prop.hasOwnProperty('value')) {
+                continue;
+            }
+
+            const value = prop.value;
+            let changedSettingResult;
+
+            switch (setting) {
+                case DeviceSetting.HdmiOutput:
+                    changedSettingResult = await this.handleHdmiOutputSettingChangeCallback(value);
+                    break;
+
+                case DeviceSetting.InferenceThreshold:
+                    changedSettingResult = await this.handleInferenceThresholdSettingChangeCallback(value);
+                    break;
+
+                case DeviceSetting.VideoModelUrl:
+                    changedSettingResult = await this.handleVideoModelUrlSettingChange(value);
+                    break;
+
+                default:
+                    this.logger.log(['IoTCentralService', 'error'], `Recieved desired property change for unknown setting ${setting}`);
+                    break;
+            }
+
+            if (changedSettingResult) {
+                const patchedProperty = {
+                    [setting]: {
+                        ...changedSettingResult,
+                        statusCode: 200,
+                        desiredVersion: desiredChangedSettings.$version,
+                        message: 'Succeeded'
+                    }
+                };
+
+                await this.updateDeviceProperties(patchedProperty);
+            }
         }
     }
 
@@ -323,13 +418,17 @@ export class IoTCentralService {
     }
 
     @bind
-    // @ts-ignore (request)
-    private async iotcClientStartTraining(clientRequest: any, clientResponse: any) {
-        this.logger.log(['IoTCentralService', 'error'], `Client start training command received`);
+    // @ts-ignore (commandRequest)
+    private async iotcClientStartTraining(commandRequest: any, commandResponse: any) {
+        this.logger.log(['IoTCentralService', 'error'], `${DeviceCommand.StartTrainingMode} command received`);
 
         // @ts-ignore (error)
         // tslint:disable-next-line:no-empty
-        clientResponse.send(10, 'Success', (error) => { });
+        commandResponse.send(200, (error) => {
+            if (error) {
+                this.logger.log(['IoTCentralService', 'warning'], `Error sending response for ${DeviceCommand.StartTrainingMode} command: ${error.toString()}`);
+            }
+        });
     }
 
     private async iotcRequest(options: any): Promise<any> {

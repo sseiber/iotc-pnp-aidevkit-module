@@ -4,7 +4,7 @@ import { ConfigService } from './config';
 import { SubscriptionService } from '../services/subscription';
 import { DataStreamController } from '../services/dataStreamProcessor';
 import { VideoStreamController } from '../services/videoStreamProcessor';
-import { IoTCentralService, DeviceTelemetry, DeviceEvent, MeasurementType } from '../services/iotcentral';
+import { IoTCentralService, DeviceTelemetry, DeviceEvent, MessageType } from '../services/iotcentral';
 import { sleep, bind, forget } from '../utils';
 import * as _get from 'lodash.get';
 
@@ -38,6 +38,8 @@ export class InferenceProcessorService {
         this.confidenceThreshold = Number(this.config.get('confidenceThreshold')) || defaultConfidenceThreshold;
         this.dataStreamController.setInferenceCallback(this.handleDataInference);
         this.videoStreamController.setVideoFrameCallback(this.handleVideoFrame);
+
+        this.iotCentral.setInferenceThresholdSettingChangeCallback(this.handleInferenceThresholdSettingChange);
     }
 
     public async startInferenceProcessor(rtspDataUrl: string, rtspVideoUrl: string) {
@@ -48,7 +50,7 @@ export class InferenceProcessorService {
         }
 
         if (result === true) {
-            forget(this.iotCentral.sendMeasurement, MeasurementType.Event, { [DeviceEvent.InferenceProcessingStarted]: '1' });
+            forget(this.iotCentral.sendMeasurement, MessageType.Event, { [DeviceEvent.InferenceProcessingStarted]: '1' });
         }
 
         return result;
@@ -58,7 +60,7 @@ export class InferenceProcessorService {
         this.videoStreamController.stopVideoStreamProcessor();
         this.dataStreamController.stopDataStreamProcessor();
 
-        forget(this.iotCentral.sendMeasurement, MeasurementType.Event, { [DeviceEvent.InferenceProcessingStopped]: '0' });
+        forget(this.iotCentral.sendMeasurement, MessageType.Event, { [DeviceEvent.InferenceProcessingStopped]: '0' });
     }
 
     @bind
@@ -101,6 +103,18 @@ export class InferenceProcessorService {
         this.lastImageData = imageData;
     }
 
+    @bind
+    private async handleInferenceThresholdSettingChange(inferenceThreshold): Promise<any> {
+        this.logger.log(['IoTCentralService', 'info'], `Handle property change for InferenceThreshold setting`);
+
+        this.confidenceThreshold = inferenceThreshold;
+
+        return {
+            value: this.confidenceThreshold,
+            status: 'completed'
+        };
+    }
+
     private async publishInference(inference) {
         const trackTimeout = Date.now();
         this.lastImageData = null;
@@ -114,10 +128,10 @@ export class InferenceProcessorService {
         });
 
         const data = {
-            inference: inference.inferences.length,
-            inferences: inference.inferences
+            count: inference.inferences.length,
+            classes: inference.inferences.map(inferenceItem => _get(inferenceItem, 'display_name') || 'Unkonwn')
         };
 
-        forget(this.iotCentral.sendMeasurement, MeasurementType.Telemetry, [DeviceTelemetry.Inference], data);
+        forget(this.iotCentral.sendMeasurement, MessageType.Telemetry, { [DeviceTelemetry.Inference]: data });
     }
 }

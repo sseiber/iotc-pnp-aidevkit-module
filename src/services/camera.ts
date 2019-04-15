@@ -12,18 +12,54 @@ import { FileHandlerService } from './fileHandler';
 import { StateService } from './state';
 import { ICameraResult } from './clientTypes';
 import { InferenceProcessorService } from '../services/inferenceProcessor';
-import { IoTCentralService, MeasurementType, DeviceState, DeviceEvent, DeviceSetting, DeviceProperty } from '../services/iotcentral';
+import { IoTCentralService, MessageType, DeviceState, DeviceEvent, DeviceSetting, DeviceProperty } from '../services/iotcentral';
 import { bind, sleep, forget } from '../utils';
+
+export const defaultresolutionSelectVal: number = 1;
+export const defaultencodeModeSelectVal: number = 1;
+export const defaultbitRateSelectVal: number = 3;
+export const defaultfpsSelectVal: number = 1;
+export const defaultCameraSettings = {
+    resolutionVal: defaultresolutionSelectVal,
+    encodeModeVal: defaultencodeModeSelectVal,
+    bitRateVal: defaultbitRateSelectVal,
+    fpsVal: defaultfpsSelectVal,
+    videoPreview: true,
+    vamProcessing: true
+};
 
 const defaultCameraUsername: string = 'admin';
 const defaultCameraPassword: string = 'admin';
-const defaultresolutionSelectVal: number = 1;
-const defaultencodeModeSelectVal: number = 1;
-const defaultbitRateSelectVal: number = 3;
-const defaultfpsSelectVal: number = 1;
 const defaultMaxLoginAttempts: number = 4;
 const defaultRtspVideoPort: string = '8900';
 const defaultIpcPort: string = '1080';
+const resolutions: string[] = [
+    '4K',
+    '1080P',
+    '720P',
+    '480P'
+];
+const encoders: string[] = [
+    'HEVC/H.265',
+    'AVC/H.264'
+];
+const bitRates: string[] = [
+    '512Kbps',
+    '768Kbps',
+    '1Mbps',
+    '1.5Mbps',
+    '2Mbps',
+    '3Mbps',
+    '4Mbps',
+    '6Mbps',
+    '8Mbps',
+    '10Mbps',
+    '20Mbps'
+];
+const frameRates: string[] = [
+    '24',
+    '30'
+];
 
 @service('camera')
 export class CameraService extends EventEmitter {
@@ -60,40 +96,10 @@ export class CameraService extends EventEmitter {
     private ipcPort: string = defaultIpcPort;
     private rtspVideoUrl: string = '';
     private rtspVamUrl: string = '';
-    private resolutions: string[] = [];
-    private encoders: string[] = [];
-    private bitRates: string[] = [];
-    private frameRates: number[] = [];
-    private videoSettings = {
-        resolutionSelectVal: defaultresolutionSelectVal,
-        encodeModeSelectVal: defaultencodeModeSelectVal,
-        bitRateSelectVal: defaultbitRateSelectVal,
-        fpsSelectVal: defaultfpsSelectVal,
-        displayOut: 0
+    private modelFile: string = '';
+    private currentCameraSettings = {
+        ...defaultCameraSettings
     };
-    private modelFiles: string[] = [];
-    private videoPreview: boolean = false;
-    private vamProcessing: boolean = false;
-
-    public get currentResolutionSelectVal() {
-        return this.videoSettings.resolutionSelectVal;
-    }
-
-    public get currentEncodeModeSelectVal() {
-        return this.videoSettings.encodeModeSelectVal;
-    }
-
-    public get currentBitRateSelectVal() {
-        return this.videoSettings.bitRateSelectVal;
-    }
-
-    public get currentFpsSelectVal() {
-        return this.videoSettings.fpsSelectVal;
-    }
-
-    public get currentDisplayOutVal() {
-        return this.videoSettings.displayOut;
-    }
 
     public async init(): Promise<void> {
         this.logger.log(['CameraService', 'info'], 'initialize');
@@ -103,6 +109,8 @@ export class CameraService extends EventEmitter {
         this.maxLoginAttempts = this.config.get('maxLoginAttemps') || defaultMaxLoginAttempts;
         this.rtspVideoPort = this.config.get('rtspVideoPort') || defaultRtspVideoPort;
         this.ipcPort = this.config.get('ipcPort') || defaultIpcPort;
+
+        this.iotCentral.setHdmiOutputSettingChangeCallback(this.handleHdmiOutputSettingChange);
 
         this.server.decorate('server', 'startCamera', this.startCamera);
     }
@@ -129,7 +137,7 @@ export class CameraService extends EventEmitter {
             status = await this.ipcLogin();
 
             if (status === true) {
-                status = await this.initializeCamera();
+                status = await this.initializeCamera(this.currentCameraSettings);
             }
         }
         catch (ex) {
@@ -148,7 +156,7 @@ export class CameraService extends EventEmitter {
             };
         }
         else {
-            forget(this.iotCentral.sendMeasurement, MeasurementType.Event, { [DeviceEvent.SessionLogin]: this.sessionToken });
+            forget(this.iotCentral.sendMeasurement, MessageType.Event, { [DeviceEvent.SessionLogin]: this.sessionToken });
 
             return {
                 ...this.getConfiguration(),
@@ -176,7 +184,7 @@ export class CameraService extends EventEmitter {
                     }
                 }
 
-                forget(this.iotCentral.sendMeasurement, MeasurementType.Event, { [DeviceEvent.SessionLogout]: this.sessionToken });
+                forget(this.iotCentral.sendMeasurement, MessageType.Event, { [DeviceEvent.SessionLogout]: this.sessionToken });
             }
 
             status = true;
@@ -188,10 +196,16 @@ export class CameraService extends EventEmitter {
         }
 
         this.sessionToken = '';
-        this.videoPreview = false;
         this.rtspVideoUrl = '';
-        this.vamProcessing = false;
         this.rtspVamUrl = '';
+
+        const activeDeviceState = {
+            [DeviceSetting.HdmiOutput]: 0,
+            [DeviceState.InferenceProcessor]: 'Off',
+            [DeviceState.Session]: 'Inactive'
+        };
+
+        forget(this.iotCentral.sendMeasurement, MessageType.State, activeDeviceState);
 
         return {
             ...this.getConfiguration(),
@@ -211,17 +225,17 @@ export class CameraService extends EventEmitter {
                     ipAddresses: this.ipAddresses,
                     rtspVideoUrl: this.sessionToken ? this.rtspVideoUrl : '',
                     rtspVamUrl: this.sessionToken ? this.rtspVamUrl : '',
-                    resolution: this.sessionToken ? this.resolutions[this.videoSettings.resolutionSelectVal] : '',
-                    resolutions: this.resolutions,
-                    encoder: this.sessionToken ? this.encoders[this.videoSettings.encodeModeSelectVal] : '',
-                    encoders: this.encoders,
-                    bitRate: this.sessionToken ? this.bitRates[this.videoSettings.bitRateSelectVal] : '',
-                    bitRates: this.bitRates,
-                    frameRate: this.sessionToken ? this.frameRates[this.videoSettings.fpsSelectVal] : '',
-                    frameRates: this.frameRates,
-                    modelFiles: this.modelFiles,
-                    videoPreview: this.videoPreview,
-                    vamProcessing: this.vamProcessing
+                    resolution: this.sessionToken ? resolutions[this.currentCameraSettings.resolutionVal] : '',
+                    resolutions,
+                    encoder: this.sessionToken ? encoders[this.currentCameraSettings.encodeModeVal] : '',
+                    encoders,
+                    bitRate: this.sessionToken ? bitRates[this.currentCameraSettings.bitRateVal] : '',
+                    bitRates,
+                    frameRate: this.sessionToken ? frameRates[this.currentCameraSettings.fpsVal] : '',
+                    frameRates,
+                    modelFile: this.modelFile,
+                    videoPreview: this.currentCameraSettings.videoPreview,
+                    vamProcessing: this.currentCameraSettings.vamProcessing
                 },
                 iotcConfig: {
                     systemName: this.state.system.systemName,
@@ -236,6 +250,34 @@ export class CameraService extends EventEmitter {
                     iotCentralConnectionStatus: this.iotCentral.iotCentralConnectionStatus
                 }
             }
+        };
+    }
+
+    public async setCameraSettings(cameraSettings: any): Promise<ICameraResult> {
+        let status = false;
+
+        try {
+            await this.logout();
+
+            this.currentCameraSettings = {
+                ...cameraSettings
+            };
+
+            const result = await this.login();
+            status = result.status;
+        }
+        catch (ex) {
+            this.logger.log(['CameraService', 'error'], ex.message);
+
+            status = false;
+        }
+
+        return {
+            status,
+            title: 'Camera',
+            message: status
+                ? 'Succeeded'
+                : 'An error occurred while updating your camera settings'
         };
     }
 
@@ -257,7 +299,8 @@ export class CameraService extends EventEmitter {
             }
 
             if (status === true) {
-                this.server.publish('/api/v1/subscription/model', this.modelFiles);
+                this.server.publish('/api/v1/subscription/model', this.modelFile);
+                forget(this.iotCentral.sendMeasurement, MessageType.Event, { [DeviceEvent.VideoModelChange]: this.modelFile });
             }
         }
         catch (ex) {
@@ -316,21 +359,47 @@ export class CameraService extends EventEmitter {
         }
     }
 
-    public async configureDisplayOut(videoSettings): Promise<boolean> {
-        const payload = {
-            resolutionSelectVal: (videoSettings.resolutionSelectVal < this.resolutions.length) ? videoSettings.resolutionSelectVal : this.videoSettings.resolutionSelectVal,
-            encodeModeSelectVal: (videoSettings.encodeModeSelectVal < this.encoders.length) ? videoSettings.encodeModeSelectVal : this.videoSettings.encodeModeSelectVal,
-            bitRateSelectVal: (videoSettings.bitRateSelectVal < this.bitRates.length) ? videoSettings.bitRateSelectVal : this.videoSettings.bitRateSelectVal,
-            fpsSelectVal: (videoSettings.fpsSelectVal < this.frameRates.length) ? videoSettings.fpsSelectVal : this.videoSettings.fpsSelectVal,
-            displayOut: videoSettings.displayOut
-        };
-
+    private async configureVideoPreview(cameraSettings: any): Promise<boolean> {
         try {
-            const result = await this.ipcPostRequest('/video', payload);
+            this.logger.log(['CameraService', 'info'], `Setting video configuration: ${JSON.stringify(cameraSettings)}`);
 
-            this.videoSettings = {
-                ...payload
+            const payload = {
+                resolutionSelectVal: (cameraSettings.resolutionVal < resolutions.length) ? cameraSettings.resolutionVal : defaultresolutionSelectVal,
+                encodeModeSelectVal: (cameraSettings.encodeModeVal < encoders.length) ? cameraSettings.encodeModeVal : defaultencodeModeSelectVal,
+                bitRateSelectVal: (cameraSettings.bitRateVal < bitRates.length) ? cameraSettings.bitRateVal : defaultbitRateSelectVal,
+                fpsSelectVal: (cameraSettings.fpsSelectVal < frameRates.length) ? cameraSettings.fpsVal : defaultfpsSelectVal,
+                displayOut: cameraSettings.videoPreview
             };
+
+            let result = await this.ipcPostRequest('/video', payload);
+
+            if (result === true) {
+                this.logger.log(['CameraService', 'info'], `Setting video preview`);
+
+                result = await this.ipcPostRequest('/preview', { switchStatus: cameraSettings.videoPreview });
+            }
+
+            if (result === true) {
+                result = this.getRtspVideoUrl();
+            }
+
+            if (result === true) {
+                const activeDeviceProperties = {
+                    [DeviceProperty.RtspVideoUrl]: this.sessionToken ? this.rtspVideoUrl : '',
+                    [DeviceProperty.Resolution]: this.sessionToken ? resolutions[this.currentCameraSettings.resolutionVal] : '',
+                    [DeviceProperty.Encoder]: this.sessionToken ? encoders[this.currentCameraSettings.encodeModeVal] : '',
+                    [DeviceProperty.Bitrate]: this.sessionToken ? bitRates[this.currentCameraSettings.bitRateVal] : '',
+                    [DeviceProperty.Fps]: this.sessionToken ? frameRates[this.currentCameraSettings.fpsVal] : ''
+                };
+
+                forget(this.iotCentral.updateDeviceProperties, activeDeviceProperties);
+
+                const activeDeviceState = {
+                    [DeviceSetting.HdmiOutput]: this.currentCameraSettings.videoPreview ? 1 : 0
+                };
+
+                forget(this.iotCentral.sendMeasurement, MessageType.State, activeDeviceState);
+            }
 
             return result;
         }
@@ -341,83 +410,22 @@ export class CameraService extends EventEmitter {
         }
     }
 
-    public async configureOverlay(type: string, text?: string): Promise<boolean> {
-        if (type === 'inference') {
-            return this.configureInferenceOverlay();
-        }
-        else if (type === 'text') {
-            return this.configureTextOverlay(text);
-        }
-
-        this.logger.log(['CameraService', 'error'], 'Invalid overlay type use (inference/text)');
-        return Promise.resolve(false);
-    }
-
-    public async captureImage(): Promise<any> {
-        return this.ipcPostRequest('/captureimage', {});
-    }
-
-    private async initializeCamera(): Promise<boolean> {
-        this.logger.log(['CameraService', 'info'], `Starting camera initial configuration`);
-
+    private async configureVAMProcessing(cameraSettings: any): Promise<boolean> {
         try {
             let result = false;
 
-            const videoSettings = {
-                ...this.videoSettings,
-                displayOut: 1
-            };
+            const dlcFile = await this.fileHandler.ensureModelFilesExist(this.fileHandler.currentModelFolderPath);
+            if (dlcFile) {
+                this.modelFile = dlcFile;
 
-            this.logger.log(['CameraService', 'info'], `Setting video configuration: ${JSON.stringify(videoSettings)}`);
+                this.logger.log(['CameraService', 'info'], `Turning on VAM`);
 
-            result = await this.configureDisplayOut(videoSettings);
+                result = await this.ipcPostRequest('/vam', { switchStatus: cameraSettings.vamProcessing, vamconfig: 'MD' });
 
-            if (result === true) {
-                this.logger.log(['CameraService', 'info'], `Retrieving camera settings`);
+                if (result === true && cameraSettings.vamProcessing) {
+                    this.logger.log(['CameraService', 'info'], `Retrieving RTSP VAM url`);
 
-                const response = JSON.parse(await this.ipcGetRequest('/video'));
-                result = response.status;
-
-                if (result === true) {
-                    this.videoSettings.resolutionSelectVal = response.resolutionSelectVal;
-                    this.resolutions = [...response.resolution];
-                    this.videoSettings.encodeModeSelectVal = response.encodeModeSelectVal;
-                    this.encoders = [...response.encodeMode];
-                    this.videoSettings.bitRateSelectVal = response.bitRateSelectVal;
-                    this.bitRates = [...response.bitRate];
-                    this.videoSettings.fpsSelectVal = response.fpsSelectVal;
-                    this.frameRates = [...response.fps];
-                    this.videoSettings.displayOut = response.displayOut;
-                }
-            }
-
-            if (result === true) {
-                this.logger.log(['CameraService', 'info'], `Turning on preview`);
-
-                result = await this.ipcPostRequest('/preview', { switchStatus: true });
-
-                if (result === true) {
-                    this.videoPreview = true;
-                    this.rtspVideoUrl = this.getRtspVideoUrl();
-                }
-            }
-
-            if (result === true) {
-                const ensureResult = await this.fileHandler.ensureModelFilesExist(this.fileHandler.currentModelFolderPath);
-                if (ensureResult.dlcExists) {
-                    this.modelFiles = ensureResult.modelFiles;
-
-                    this.logger.log(['CameraService', 'info'], `Turning on VAM`);
-
-                    result = await this.ipcPostRequest('/vam', { switchStatus: true, vamconfig: 'MD' });
-
-                    if (result === true) {
-                        this.vamProcessing = true;
-
-                        this.logger.log(['CameraService', 'info'], `Retrieving RTSP VAM url`);
-
-                        result = await this.getRtspVamUrl();
-                    }
+                    result = await this.getRtspVamUrl();
 
                     if (result === true) {
                         this.logger.log(['CameraService', 'info'], `Configuring inference overlay`);
@@ -430,45 +438,40 @@ export class CameraService extends EventEmitter {
 
                         result = await this.ipcPostRequest('/overlay', { switchStatus: true });
                     }
+                }
 
-                    if (result === true) {
-                        const activeDeviceSettings = {
-                            [DeviceProperty.IpAddress]: this.ipAddresses.cameraIpAddress,
-                            [DeviceProperty.RtspVideoUrl]: this.sessionToken ? this.rtspVideoUrl : '',
-                            [DeviceProperty.RtspDataUrl]: this.sessionToken ? this.rtspVamUrl : '',
-                            [DeviceProperty.Resolution]: this.sessionToken ? this.resolutions[this.videoSettings.resolutionSelectVal] : '',
-                            [DeviceProperty.Encoder]: this.sessionToken ? this.encoders[this.videoSettings.encodeModeSelectVal] : '',
-                            [DeviceProperty.Bitrate]: this.sessionToken ? this.bitRates[this.videoSettings.bitRateSelectVal] : '',
-                            [DeviceProperty.Fps]: this.sessionToken ? this.frameRates[this.videoSettings.fpsSelectVal] : '',
-                            [DeviceSetting.HdmiOutput]: this.videoPreview ? 1 : 0,
-                            [DeviceState.InferenceProcessor]: this.vamProcessing ? 'On' : 'Off',
-                            [DeviceState.Session]: this.sessionToken ? 'Active' : 'Inactive'
-                        };
+                if (result === true) {
+                    const activeDeviceProperties = {
+                        [DeviceProperty.IpAddress]: this.ipAddresses.cameraIpAddress,
+                        [DeviceProperty.RtspDataUrl]: this.sessionToken ? this.rtspVamUrl : ''
+                    };
 
-                        forget(this.iotCentral.sendMeasurement, MeasurementType.Event, activeDeviceSettings);
+                    forget(this.iotCentral.updateDeviceProperties, activeDeviceProperties);
 
-                        this.logger.log(['CameraService', 'info'], `Starting inference processing service`);
+                    const activeDeviceState = {
+                        [DeviceState.InferenceProcessor]: this.currentCameraSettings.vamProcessing ? 'On' : 'Off',
+                        [DeviceState.Session]: this.sessionToken ? 'Active' : 'Inactive'
+                    };
 
-                        result = await this.inferenceProcessor.startInferenceProcessor(this.rtspVamUrl, this.rtspVideoUrl);
-                    }
+                    forget(this.iotCentral.sendMeasurement, MessageType.State, activeDeviceState);
                 }
             }
 
             return result;
         }
         catch (ex) {
-            this.logger.log(['CameraService', 'error'], `Failed during initSession: ${ex.message}`);
+            this.logger.log(['CameraService', 'error'], ex.message);
 
             return false;
         }
     }
 
-    private async configureInferenceOverlay(): Promise<boolean> {
+    private async configureOverlay(type: string, text?: string): Promise<boolean> {
         const payload = {
-            ov_type_SelectVal: 5,
+            ov_type_SelectVal: type === 'inference' ? 5 : 0,
             ov_position_SelectVal: 0,
             ov_color: '869007615',
-            ov_usertext: 'Text',
+            ov_usertext: type === 'inference' ? 'Text' : text || '',
             ov_start_x: 0,
             ov_start_y: 0,
             ov_width: 0,
@@ -485,23 +488,43 @@ export class CameraService extends EventEmitter {
         }
     }
 
-    private async configureTextOverlay(text: string): Promise<boolean> {
-        const payload = {
-            ov_type_SelectVal: 0,
-            ov_position_SelectVal: 0,
-            ov_color: '869007615',
-            ov_usertext: text,
-            ov_start_x: 0,
-            ov_start_y: 0,
-            ov_width: 0,
-            ov_height: 0
+    @bind
+    private async handleHdmiOutputSettingChange(hdmiOutput): Promise<any> {
+        this.logger.log(['CameraService', 'info'], `Received HdmiOutputSettingChange to: ${hdmiOutput}`);
+
+        // await this.setCameraSettings({
+        //     ...this.currentCameraSettings,
+        //     videoPreview: hdmiOutput
+        // });
+
+        return {
+            value: this.currentCameraSettings.videoPreview,
+            status: 'completed'
         };
+    }
+
+    private async initializeCamera(cameraSettings: any): Promise<boolean> {
+        this.logger.log(['CameraService', 'info'], `Starting camera initial configuration`);
 
         try {
-            return this.ipcPostRequest('overlayconfig', payload);
+            let result = false;
+
+            result = await this.configureVideoPreview(cameraSettings);
+
+            if (result === true && cameraSettings.videoPreview) {
+                result = await this.configureVAMProcessing(cameraSettings);
+
+                if (result === true) {
+                    this.logger.log(['CameraService', 'info'], `Starting inference processing service`);
+
+                    result = await this.inferenceProcessor.startInferenceProcessor(this.rtspVamUrl, this.rtspVideoUrl);
+                }
+            }
+
+            return result;
         }
         catch (ex) {
-            this.logger.log(['CameraService', 'error'], ex.message);
+            this.logger.log(['CameraService', 'error'], `Failed during initSession: ${ex.message}`);
 
             return false;
         }
@@ -523,8 +546,10 @@ export class CameraService extends EventEmitter {
         }
     }
 
-    private getRtspVideoUrl(): string {
-        return `rtsp://${this.ipAddresses.cameraIpAddress}:${this.rtspVideoPort}/live`;
+    private getRtspVideoUrl(): boolean {
+        this.rtspVideoUrl = `rtsp://${this.ipAddresses.cameraIpAddress}:${this.rtspVideoPort}/live`;
+
+        return true;
     }
 
     private async ipcLogin(): Promise<boolean> {
