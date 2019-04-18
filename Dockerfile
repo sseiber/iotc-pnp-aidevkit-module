@@ -28,7 +28,6 @@ RUN npm install -q && \
     npm prune --production && \
     rm -f tslint.json && \
     rm -f tsconfig.json && \
-    rm -f .npmrc && \
     rm -rf src
 
 EXPOSE 9010

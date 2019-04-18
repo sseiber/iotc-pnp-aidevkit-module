@@ -1,8 +1,13 @@
 import { inject, RoutePlugin, route } from 'spryly';
 import { Request, ResponseToolkit } from 'hapi';
+import { CameraService } from '../services/camera';
 import { SubscriptionService } from '../services/subscription';
+import * as Boom from 'boom';
 
 export class HealthRoutes extends RoutePlugin {
+    @inject('camera')
+    private camera: CameraService;
+
     @inject('subscription')
     private subscription: SubscriptionService;
 
@@ -16,9 +21,16 @@ export class HealthRoutes extends RoutePlugin {
         }
     })
     // @ts-ignore (request)
-    public health(request: Request, h: ResponseToolkit) {
-        this.subscription.publishHealth({ state: 'healthy' });
+    public async health(request: Request, h: ResponseToolkit) {
+        try {
+            this.subscription.publishHealth({ state: 'healthy' });
 
-        return h.response('healthy').code(200);
+            const result = await this.camera.checkHealthState();
+
+            return h.response(result).code(200);
+        }
+        catch (ex) {
+            throw Boom.badRequest(ex.message);
+        }
     }
 }

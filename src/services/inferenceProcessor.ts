@@ -4,7 +4,8 @@ import { ConfigService } from './config';
 import { SubscriptionService } from '../services/subscription';
 import { DataStreamController } from '../services/dataStreamProcessor';
 import { VideoStreamController } from '../services/videoStreamProcessor';
-import { IoTCentralService, DeviceTelemetry, DeviceEvent, MessageType } from '../services/iotcentral';
+import { IoTCentralService, DeviceTelemetry, MessageType } from '../services/iotcentral';
+import { HealthStates } from './serverTypes';
 import { sleep, bind, forget } from '../utils';
 import * as _get from 'lodash.get';
 
@@ -49,18 +50,12 @@ export class InferenceProcessorService {
             result = await this.videoStreamController.startVideoStreamProcessor(rtspVideoUrl);
         }
 
-        if (result === true) {
-            forget(this.iotCentral.sendMeasurement, MessageType.Event, { [DeviceEvent.InferenceProcessingStarted]: '1' });
-        }
-
         return result;
     }
 
     public stopInferenceProcessor() {
         this.videoStreamController.stopVideoStreamProcessor();
         this.dataStreamController.stopDataStreamProcessor();
-
-        forget(this.iotCentral.sendMeasurement, MessageType.Event, { [DeviceEvent.InferenceProcessingStopped]: '0' });
     }
 
     @bind
@@ -101,6 +96,23 @@ export class InferenceProcessorService {
     @bind
     public async handleVideoFrame(imageData: Buffer) {
         this.lastImageData = imageData;
+    }
+
+    public getHealth(): any {
+        const dataStreamControllerHealth = this.dataStreamController.getHealth();
+        const videoStreamControllerHealth = this.videoStreamController.getHealth();
+
+        if (dataStreamControllerHealth === HealthStates.Critical || videoStreamControllerHealth === HealthStates.Critical) {
+            return {
+                dataStreamController: dataStreamControllerHealth,
+                videoStreamController: videoStreamControllerHealth
+            };
+        }
+
+        return {
+            dataStreamController: HealthStates.Good,
+            videoStreamController: HealthStates.Good
+        };
     }
 
     @bind

@@ -44,13 +44,17 @@ async function start() {
         server.log(['startup', 'info'], ` > Machine: ${osPlatform()}, ${osCpus().length} core, ` +
             `freemem=${(osFreeMem() / 1024 / 1024).toFixed(0)}mb, totalmem=${(osTotalMem() / 1024 / 1024).toFixed(0)}mb`);
 
-        server.log(['startup', 'info'], `👨‍💻 Server starting IoT Central provisioning`);
-        await (server as any).connectToIoTCentral();
-        server.log(['startup', 'info'], `👩‍💻 Server finished IoT Central provisioning`);
+        server.log(['startup', 'info'], `👨‍💻 Starting IoT Central provisioning`);
+        await (server.methods.iotCentral as any).connectToIoTCentral();
+        server.log(['startup', 'info'], `👩‍💻 Finished IoT Central provisioning`);
 
-        server.log(['startup', 'info'], `📷 Server starting camera initialzation`);
-        await (server as any).startCamera();
-        server.log(['startup', 'info'], `📸 Server finished camera initialization`);
+        server.log(['startup', 'info'], `📁 Starting Docker image provisioning`);
+        await (server.methods.fileHandler as any).provisionDockerImage();
+        server.log(['startup', 'info'], `📁 Finished Docker image provisioning`);
+
+        server.log(['startup', 'info'], `📷 Starting camera initialzation`);
+        await (server.methods.camera as any).startCamera();
+        server.log(['startup', 'info'], `📸 Finished camera initialization`);
 
         server.publish(`/api/v1/subscription/up`, {});
     }
