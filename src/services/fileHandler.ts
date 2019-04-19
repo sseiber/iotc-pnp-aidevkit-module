@@ -105,7 +105,7 @@ export class FileHandlerService {
 
                         writeFileSync(versionFilePath, { version: this.dockerImageVersion });
 
-                        await this.signalRestart();
+                        await this.signalRestart('provisionDockerImage-newImage');
                     }
                     else {
                         forget(this.iotCentral.sendMeasurement, MessageType.Event, { [DeviceEvent.ImageProvisionComplete]: this.dockerImageVersion });
@@ -120,7 +120,7 @@ export class FileHandlerService {
 
                 writeFileSync(versionFilePath, { version: this.dockerImageVersion });
 
-                await this.signalRestart();
+                await this.signalRestart('provisionDockerImage-noFile');
             }
         }
         catch (ex) {
@@ -256,7 +256,7 @@ export class FileHandlerService {
         return result;
     }
 
-    public async changeVideoModelFiles(fileName: any): Promise<boolean> {
+    public async switchVisionAiModelFiles(fileName: any): Promise<boolean> {
         const sourceFileName = fileName;
         const destFileName = sourceFileName;
         const destFilePath = `${this.storageFolderPath}/${destFileName}`;
@@ -302,15 +302,15 @@ export class FileHandlerService {
     }
 
     @bind
-    public async signalRestart(): Promise<void> {
+    public async signalRestart(fromService: string): Promise<void> {
         // wait here for 5 minues while we signal a reboot through crontab
-        this.logger.log(['FileHandler', 'info'], `Signalling a reboot - waiting 5 minutes...`);
+        this.logger.log(['FileHandler', 'info'], `Signalling a restart - waiting 5 minutes...`);
 
         // // distribute large numbers of device reprovisioning requests over a 60sec window
         // this doesn't actually work because crontab is quantized to 1 minute intervals
         // await sleep(1000 * Math.floor(Math.random() * Math.floor(60)));
 
-        forget(this.iotCentral.sendMeasurement, MessageType.Event, { [DeviceEvent.DeviceRestart]: '1' });
+        forget(this.iotCentral.sendMeasurement, MessageType.Event, { [DeviceEvent.DeviceRestart]: fromService });
 
         writeFileSync(pathResolve(this.storageFolderPath, 'reboot.now'), { version: this.dockerImageVersion });
 
@@ -323,7 +323,7 @@ export class FileHandlerService {
         this.logger.log(['FileHandler', 'info'], `Failed to reboot after waiting 5 minutes.`);
     }
 
-    public getHealth(): any {
+    public getHealth(): number {
         return HealthStates.Good;
     }
 

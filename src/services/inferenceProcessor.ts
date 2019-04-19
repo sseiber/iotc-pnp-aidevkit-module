@@ -1,11 +1,11 @@
 import { service, inject } from 'spryly';
+import { Server } from 'hapi';
 import { LoggingService } from './logging';
 import { ConfigService } from './config';
 import { SubscriptionService } from '../services/subscription';
 import { DataStreamController } from '../services/dataStreamProcessor';
 import { VideoStreamController } from '../services/videoStreamProcessor';
 import { IoTCentralService, DeviceTelemetry, MessageType } from '../services/iotcentral';
-import { HealthStates } from './serverTypes';
 import { sleep, bind, forget } from '../utils';
 import * as _get from 'lodash.get';
 
@@ -13,6 +13,9 @@ const defaultConfidenceThreshold: number = 70;
 
 @service('inferenceProcessor')
 export class InferenceProcessorService {
+    @inject('$server')
+    private server: Server;
+
     @inject('logger')
     private logger: LoggingService;
 
@@ -40,7 +43,7 @@ export class InferenceProcessorService {
         this.dataStreamController.setInferenceCallback(this.handleDataInference);
         this.videoStreamController.setVideoFrameCallback(this.handleVideoFrame);
 
-        this.iotCentral.setInferenceThresholdSettingChangeCallback(this.handleInferenceThresholdSettingChange);
+        this.server.method({ name: 'inferenceProcessor.inferenceThresholdSettingChange', method: this.handleInferenceThresholdSettingChange });
     }
 
     public async startInferenceProcessor(rtspDataUrl: string, rtspVideoUrl: string) {
@@ -98,25 +101,15 @@ export class InferenceProcessorService {
         this.lastImageData = imageData;
     }
 
-    public getHealth(): any {
-        const dataStreamControllerHealth = this.dataStreamController.getHealth();
-        const videoStreamControllerHealth = this.videoStreamController.getHealth();
-
-        if (dataStreamControllerHealth === HealthStates.Critical || videoStreamControllerHealth === HealthStates.Critical) {
-            return {
-                dataStreamController: dataStreamControllerHealth,
-                videoStreamController: videoStreamControllerHealth
-            };
-        }
-
-        return {
-            dataStreamController: HealthStates.Good,
-            videoStreamController: HealthStates.Good
-        };
+    public getHealth(): number[] {
+        return [
+            this.dataStreamController.getHealth(),
+            this.videoStreamController.getHealth()
+        ];
     }
 
     @bind
-    private async handleInferenceThresholdSettingChange(inferenceThreshold): Promise<any> {
+    private async handleInferenceThresholdSettingChange(inferenceThreshold: number): Promise<any> {
         this.logger.log(['IoTCentralService', 'info'], `Handle property change for InferenceThreshold setting`);
 
         this.confidenceThreshold = inferenceThreshold;

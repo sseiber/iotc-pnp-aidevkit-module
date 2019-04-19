@@ -117,8 +117,8 @@ export class VideoStreamController {
         return;
     }
 
-    public getHealth(): any {
-        if (++this.restartCount > 5) {
+    public getHealth(): number {
+        if (this.restartCount > 5) {
             return HealthStates.Critical;
         }
 
@@ -126,6 +126,14 @@ export class VideoStreamController {
     }
 
     private restartController() {
+        if (this.restartCount === 0) {
+            setTimeout(() => {
+                this.restartCount = 0;
+            }, (1000 * 120));
+        }
+
+        this.restartCount++;
+
         if (this.ffmpegProcess === null) {
             return;
         }

@@ -16,7 +16,7 @@ export interface IFileUploadDetails {
 }
 
 export const HealthStates = {
-    Good: 'healthStateGood',
-    Warning: 'healthStateWarning',
-    Critical: 'healthStateCritical'
+    Good: 3,
+    Warning: 2,
+    Critical: 1
 };

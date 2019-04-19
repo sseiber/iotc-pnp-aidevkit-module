@@ -25,9 +25,9 @@ export class HealthRoutes extends RoutePlugin {
         try {
             this.subscription.publishHealth({ state: 'healthy' });
 
-            const result = await this.camera.checkHealthState();
+            const healthState = await this.camera.checkHealthState();
 
-            return h.response(result).code(200);
+            return h.response(`HealthState: ${healthState}`).code(200);
         }
         catch (ex) {
             throw Boom.badRequest(ex.message);

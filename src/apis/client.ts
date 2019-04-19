@@ -109,14 +109,14 @@ export class ClientRoutes extends RoutePlugin {
         }
     })
     // @ts-ignore (request)
-    public async postchangeVideoModel(request: Request, h: ResponseToolkit) {
+    public async postSwitchVisionAiModel(request: Request, h: ResponseToolkit) {
         try {
             const file = (request.payload as any).model;
             if (!file) {
                 throw Boom.badRequest('No file descriptor found in the form data request');
             }
 
-            const result = await this.camera.changeVideoModel({
+            const result = await this.camera.switchVisionAiModel({
                 type: 'multipart',
                 file
             });

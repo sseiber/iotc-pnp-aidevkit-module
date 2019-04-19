@@ -93,8 +93,8 @@ export class DataStreamController {
         return;
     }
 
-    public getHealth(): any {
-        if (++this.restartCount > 5) {
+    public getHealth(): number {
+        if (this.restartCount > 5) {
             return HealthStates.Critical;
         }
 
@@ -102,6 +102,14 @@ export class DataStreamController {
     }
 
     private restartController() {
+        if (this.restartCount === 0) {
+            setTimeout(() => {
+                this.restartCount = 0;
+            }, (1000 * 120));
+        }
+
+        this.restartCount++;
+
         if (this.gstProcess === null) {
             return;
         }

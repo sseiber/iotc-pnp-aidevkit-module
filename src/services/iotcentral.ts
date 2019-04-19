@@ -20,7 +20,8 @@ export const MessageType = {
 
 export const DeviceTelemetry = {
     Inference: 'telemetry_inference',
-    Heartbeat: 'telemetry_hearbeat'
+    IoTCentralHeartbeat: 'telemetry_iotcentral_hearbeat',
+    CameraSystemHeartbeat: 'telemetry_camera_system_heartbeat'
 };
 
 export const DeviceState = {
@@ -44,8 +45,7 @@ export const DeviceEvent = {
 
 export const DeviceSetting = {
     HdmiOutput: 'setting_hdmi_output',
-    InferenceThreshold: 'setting_inference_threshold',
-    VideoModelUrl: 'setting_video_model_url'
+    InferenceThreshold: 'setting_inference_threshold'
 };
 
 export const DeviceProperty = {
@@ -79,9 +79,12 @@ const defaultIotCentralDpsEndpoint: string = 'https://global.azure-devices-provi
 const defaultIotCentralDpsRegistrationSuffix: string = '/register?api-version=###API_VERSION';
 const defaultIotCentralDpsOperationsSuffix: string = '/operations/###OPERATION_ID?api-version=###API_VERSION';
 const defaultIotCentralExpiryHours: string = '2';
-const hearbeatStatusClientConnected: number = 1;
-const hearbeatStatusReceivedDeviceTwin: number = 2;
-const hearbeatStatusReportedDeviceProperties: number = 3;
+const IoTConnectionHeartbeatStatus = {
+    None: 0,
+    ClientConnected: 1,
+    ReceivedDeviceTwin: 2,
+    ReportedDeviceProperties: 3
+};
 
 @service('iotCentral')
 export class IoTCentralService {
@@ -114,10 +117,8 @@ export class IoTCentralService {
     private iotcDeviceTwin: any = null;
     private iotcClientConnected: boolean = false;
     private iotcTelemetryThrottleTimer: number = Date.now();
-    private handleHdmiOutputSettingChangeCallback: any = null;
-    private handleInferenceThresholdSettingChangeCallback: any = null;
     private heartbeatTimer: NodeJS.Timer = null;
-    private heartbeatStatus: number = 0;
+    private heartbeatStatus: number = IoTConnectionHeartbeatStatus.None;
 
     public get iotCentralScopeId() {
         return this.iotCentralScopeIdInternal;
@@ -282,17 +283,21 @@ export class IoTCentralService {
 
         if (result === true) {
             try {
+                this.heartbeatTimer = setInterval(this.sendHeartbeatStatus, (1000 * 15));
+
                 await this.iotcClient.open();
 
-                this.heartbeatStatus = hearbeatStatusClientConnected;
+                this.heartbeatStatus = IoTConnectionHeartbeatStatus.ClientConnected;
 
                 this.iotcClient.on('error', this.onIotcClientError);
 
                 this.iotcClient.onDeviceMethod(DeviceCommand.StartTrainingMode, this.iotcClientStartTraining);
+                this.iotcClient.onDeviceMethod(DeviceCommand.SwitchVisionAiModel, this.iotcClientSwitchVisionAiModel);
+                this.iotcClient.onDeviceMethod(DeviceCommand.RestartDevice, this.iotcClientRestartDevice);
 
                 this.iotcDeviceTwin = await this.iotcClient.getTwin();
 
-                this.heartbeatStatus = hearbeatStatusReceivedDeviceTwin;
+                this.heartbeatStatus = IoTConnectionHeartbeatStatus.ReceivedDeviceTwin;
 
                 this.iotcDeviceTwin.on('properties.desired', this.onNewDeviceProperties);
 
@@ -300,9 +305,7 @@ export class IoTCentralService {
 
                 await this.updateDeviceProperties(this.state.iotCentral.properties);
 
-                this.heartbeatStatus = hearbeatStatusReportedDeviceProperties;
-
-                this.heartbeatTimer = setInterval(this.sendHeartbeatStatus, (1000 * 15));
+                this.heartbeatStatus = IoTConnectionHeartbeatStatus.ReportedDeviceProperties;
             }
             catch (ex) {
                 connectionStatus = `IoT Central connection error: ${ex.message}`;
@@ -366,25 +369,8 @@ export class IoTCentralService {
         }
     }
 
-    public setHdmiOutputSettingChangeCallback(handleHdmiOutputSettingChangeCallback: any) {
-        this.handleHdmiOutputSettingChangeCallback = handleHdmiOutputSettingChangeCallback;
-    }
-
-    public setInferenceThresholdSettingChangeCallback(handleInferenceThresholdSettingChange: any) {
-        this.handleInferenceThresholdSettingChangeCallback = handleInferenceThresholdSettingChange;
-    }
-
-    public getHealth(): any {
+    public getHealth(): number {
         return HealthStates.Good;
-    }
-
-    private async handleVideoModelUrlSettingChange(newValue): Promise<any> {
-        this.logger.log(['IoTCentralService', 'info'], `Handle property change for VideoModelUrl setting`);
-
-        return {
-            value: newValue,
-            status: 'completed'
-        };
     }
 
     @bind
@@ -408,15 +394,11 @@ export class IoTCentralService {
 
             switch (setting) {
                 case DeviceSetting.HdmiOutput:
-                    changedSettingResult = await this.handleHdmiOutputSettingChangeCallback(value);
+                    changedSettingResult = await (this.server.methods.camera as any).hdmiOutputSettingChange(value);
                     break;
 
                 case DeviceSetting.InferenceThreshold:
-                    changedSettingResult = await this.handleInferenceThresholdSettingChangeCallback(value);
-                    break;
-
-                case DeviceSetting.VideoModelUrl:
-                    changedSettingResult = await this.handleVideoModelUrlSettingChange(value);
+                    changedSettingResult = await (this.server.methods.inferenceProcessor as any).inferenceThresholdSettingChange(value);
                     break;
 
                 default:
@@ -443,7 +425,7 @@ export class IoTCentralService {
     private sendHeartbeatStatus() {
         this.logger.log(['IoTCentralService', 'info'], `Heartbeat status: ${this.heartbeatStatus}`);
 
-        forget(this.sendMeasurement, MessageType.Telemetry, { [DeviceTelemetry.Heartbeat]: this.heartbeatStatus });
+        forget(this.sendMeasurement, MessageType.Telemetry, { [DeviceTelemetry.IoTCentralHeartbeat]: this.heartbeatStatus });
     }
 
     private computDerivedSymmetricKey(secret: string, id: string): string {
@@ -470,24 +452,33 @@ export class IoTCentralService {
 
         commandResponse.send(200, (error) => {
             if (error) {
-                this.logger.log(['IoTCentralService', 'warning'], `Error sending response for ${DeviceCommand.StartTrainingMode} command: ${error.toString()}`);
+                this.logger.log(['IoTCentralService', 'error'], `Error sending response for ${DeviceCommand.StartTrainingMode} command: ${error.toString()}`);
             }
         });
     }
 
     @bind
-    // @ts-ignore (commandRequest)
-    private async iotcClientSwitchVideoModel(commandRequest: any, commandResponse: any) {
+    private async iotcClientSwitchVisionAiModel(iotcRequest: any, iotcResponse: any) {
         this.logger.log(['IoTCentralService', 'error'], `${DeviceCommand.SwitchVisionAiModel} command received`);
 
-        const url = 'foo';
-        forget((this.server.methods.camera as any).changeVideoModel, { type: 'url', fielUrl: url });
+        const fileUrl = _get(iotcRequest, 'payload.command_param_vision_model_uri');
 
-        commandResponse.send(200, (error) => {
+        iotcResponse.send(fileUrl ? 200 : 400, (error) => {
             if (error) {
-                this.logger.log(['IoTCentralService', 'warning'], `Error sending response for ${DeviceCommand.StartTrainingMode} command: ${error.toString()}`);
+                this.logger.log(['IoTCentralService', 'error'], `Error sending response for ${DeviceCommand.StartTrainingMode} command: ${error.toString()}`);
             }
         });
+
+        if (fileUrl) {
+            try {
+                await (this.server.methods.camera as any).switchVisionAiModel({ type: 'url', fileUrl });
+
+                await (this.server.methods.fileHandler as any).signalRestart('iotcClientRestartCommand');
+            }
+            catch {
+                this.logger.log(['IoTCentralService', 'error'], `An exception occurred while trying to switch the vision ai model`);
+            }
+        }
     }
 
     @bind
@@ -497,11 +488,11 @@ export class IoTCentralService {
 
         commandResponse.send(200, (error) => {
             if (error) {
-                this.logger.log(['IoTCentralService', 'warning'], `Error sending response for ${DeviceCommand.StartTrainingMode} command: ${error.toString()}`);
+                this.logger.log(['IoTCentralService', 'error'], `Error sending response for ${DeviceCommand.StartTrainingMode} command: ${error.toString()}`);
             }
         });
 
-        forget((this.server.methods.fileHandler as any).signalRestart);
+        await (this.server.methods.fileHandler as any).signalRestart('iotcClientRestartCommand');
     }
 
     private async iotcRequest(options: any): Promise<any> {

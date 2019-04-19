@@ -11,7 +11,7 @@ import { LoggingService } from './logging';
 import { StateService } from './state';
 import { InferenceProcessorService } from '../services/inferenceProcessor';
 import { FileHandlerService } from './fileHandler';
-import { IoTCentralService, MessageType, DeviceState, DeviceEvent, DeviceSetting, DeviceProperty } from '../services/iotcentral';
+import { IoTCentralService, MessageType, DeviceTelemetry, DeviceState, DeviceEvent, DeviceSetting, DeviceProperty } from '../services/iotcentral';
 import { ICameraResult, HealthStates } from './serverTypes';
 import { bind, sleep, forget } from '../utils';
 
@@ -110,18 +110,11 @@ export class CameraService extends EventEmitter {
         this.rtspVideoPort = this.config.get('rtspVideoPort') || defaultRtspVideoPort;
         this.ipcPort = this.config.get('ipcPort') || defaultIpcPort;
 
-        this.iotCentral.setHdmiOutputSettingChangeCallback(this.handleHdmiOutputSettingChange);
-
         setInterval(this.checkHealthState, (1000 * 15));
 
-        this.server.method({
-            name: 'camera.startCamera',
-            method: this.startCamera
-        });
-        this.server.method({
-            name: 'camera.changeVideoModel',
-            method: this.changeVideoModel
-        });
+        this.server.method({ name: 'camera.startCamera', method: this.startCamera });
+        this.server.method({ name: 'camera.switchVisionAiModel', method: this.handleSwitchVisionAiModel });
+        this.server.method({ name: 'camera.hdmiOutputSettingChange', method: this.handleHdmiOutputSettingChange });
     }
 
     @bind
@@ -290,39 +283,8 @@ export class CameraService extends EventEmitter {
         };
     }
 
-    @bind
-    public async changeVideoModel(fileInfo: any): Promise<ICameraResult> {
-        let status = false;
-        try {
-            const fileName = fileInfo.type === 'multipart'
-                ? await this.fileHandler.saveMultiPartFormModelPackage(fileInfo.file)
-                : await this.fileHandler.saveUrlModelPackage(fileInfo.fileUrl);
-
-            if (fileName) {
-                status = await this.fileHandler.extractAndVerifyModelFiles(fileName);
-
-                if (status === true) {
-                    await this.logout();
-
-                    status = await this.fileHandler.changeVideoModelFiles(fileName);
-                }
-
-                if (status === true) {
-                    const result = await this.login();
-                    status = result.status;
-                }
-
-                if (status === true) {
-                    this.server.publish('/api/v1/subscription/model', this.modelFile);
-                    forget(this.iotCentral.sendMeasurement, MessageType.Event, { [DeviceEvent.VideoModelChange]: this.modelFile });
-                }
-            }
-        }
-        catch (ex) {
-            this.logger.log(['CameraService', 'error'], ex.message);
-
-            status = false;
-        }
+    public async switchVisionAiModel(fileInfo: any): Promise<ICameraResult> {
+        const status = await this.handleSwitchVisionAiModel(fileInfo);
 
         return {
             status,
@@ -375,21 +337,141 @@ export class CameraService extends EventEmitter {
     }
 
     @bind
-    public checkHealthState(): string {
+    public checkHealthState(): number {
         const inferenceProcessorHealth = this.inferenceProcessor.getHealth();
         const iotCentralHealth = this.iotCentral.getHealth();
         const fileHandlerHealth = this.fileHandler.getHealth();
 
-        if (inferenceProcessorHealth.dataStreamController === HealthStates.Critical
-            || inferenceProcessorHealth.videoStreamController === HealthStates.Critical
+        if (inferenceProcessorHealth[0] === HealthStates.Critical
+            || inferenceProcessorHealth[1] === HealthStates.Critical
             || iotCentralHealth === HealthStates.Critical
             || fileHandlerHealth === HealthStates.Critical) {
-            forget((this.server.methods.fileHandler as any).signalRestart);
+
+            this.logger.log(['CameraService', 'info'], `Health check critical: `
+                + `ds:${inferenceProcessorHealth[0]} `
+                + `dv:${inferenceProcessorHealth[1]} `
+                + `iot:${iotCentralHealth} `
+                + `file:${fileHandlerHealth}`);
+
+            forget((this.server.methods.fileHandler as any).signalRestart, `checkHealthState`);
 
             return HealthStates.Critical;
         }
 
+        forget(this.iotCentral.sendMeasurement, MessageType.Telemetry, { [DeviceTelemetry.CameraSystemHeartbeat]: HealthStates.Good });
+
         return HealthStates.Good;
+    }
+
+    @bind
+    private async handleHdmiOutputSettingChange(hdmiOutput: boolean): Promise<any> {
+        this.logger.log(['CameraService', 'info'], `Received HdmiOutputSettingChange to: ${hdmiOutput}`);
+
+        if (this.currentCameraSettings.videoPreview !== hdmiOutput) {
+            await this.setCameraSettings({
+                ...this.currentCameraSettings,
+                videoPreview: hdmiOutput
+            });
+        }
+
+        return {
+            value: this.currentCameraSettings.videoPreview,
+            status: 'completed'
+        };
+    }
+
+    @bind
+    private async handleSwitchVisionAiModel(fileInfo: any): Promise<boolean> {
+        let status = false;
+
+        try {
+            await this.logout();
+
+            const fileName = fileInfo.type === 'multipart'
+                ? await this.fileHandler.saveMultiPartFormModelPackage(fileInfo.file)
+                : await this.fileHandler.saveUrlModelPackage(fileInfo.fileUrl);
+
+            if (fileName) {
+                status = await this.fileHandler.extractAndVerifyModelFiles(fileName);
+
+                if (status === true) {
+                    status = await this.fileHandler.switchVisionAiModelFiles(fileName);
+
+                    const dlcFile = await this.fileHandler.ensureModelFilesExist(this.fileHandler.currentModelFolderPath);
+                    if (dlcFile) {
+                        this.modelFile = dlcFile;
+
+                        forget(this.iotCentral.updateDeviceProperties, { [DeviceProperty.VideoModelName]: this.modelFile });
+                    }
+                }
+
+                if (status === true) {
+                    this.server.publish('/api/v1/subscription/model', this.modelFile);
+                    forget(this.iotCentral.sendMeasurement, MessageType.Event, { [DeviceEvent.VideoModelChange]: this.modelFile });
+                }
+            }
+
+            if (status === true) {
+                const result = await this.login();
+                status = result.status;
+            }
+        }
+        catch (ex) {
+            this.logger.log(['CameraService', 'error'], ex.message);
+
+            status = false;
+        }
+
+        return status;
+    }
+
+    private async initializeCamera(cameraSettings: any): Promise<boolean> {
+        this.logger.log(['CameraService', 'info'], `Starting camera initial configuration`);
+
+        try {
+            let result = false;
+
+            result = await this.configureVideoPreview(cameraSettings);
+
+            if (result === true && cameraSettings.videoPreview) {
+                result = await this.configureVAMProcessing(cameraSettings);
+
+                if (result === true) {
+                    this.logger.log(['CameraService', 'info'], `Starting inference processing service`);
+
+                    result = await this.inferenceProcessor.startInferenceProcessor(this.rtspVamUrl, this.rtspVideoUrl);
+                }
+            }
+
+            return result;
+        }
+        catch (ex) {
+            this.logger.log(['CameraService', 'error'], `Failed during initSession: ${ex.message}`);
+
+            return false;
+        }
+    }
+
+    private async getRtspVamUrl(): Promise<boolean> {
+        try {
+            const response = await this.ipcGetRequest('/vam');
+            const result = JSON.parse(response);
+
+            this.rtspVamUrl = result.url || '';
+
+            return result.status;
+        }
+        catch (ex) {
+            this.logger.log(['CameraService', 'error'], ex.message);
+
+            return false;
+        }
+    }
+
+    private getRtspVideoUrl(): boolean {
+        this.rtspVideoUrl = `rtsp://${this.ipAddresses.cameraIpAddress}:${this.rtspVideoPort}/live`;
+
+        return true;
     }
 
     private async configureVideoPreview(cameraSettings: any): Promise<boolean> {
@@ -451,8 +533,6 @@ export class CameraService extends EventEmitter {
             const dlcFile = await this.fileHandler.ensureModelFilesExist(this.fileHandler.currentModelFolderPath);
             if (dlcFile) {
                 this.modelFile = dlcFile;
-
-                forget(this.iotCentral.updateDeviceProperties, { [DeviceProperty.ImageVersion]: this.modelFile });
 
                 this.logger.log(['CameraService', 'info'], `Turning on VAM`);
 
@@ -522,70 +602,6 @@ export class CameraService extends EventEmitter {
 
             return false;
         }
-    }
-
-    @bind
-    private async handleHdmiOutputSettingChange(hdmiOutput): Promise<any> {
-        this.logger.log(['CameraService', 'info'], `Received HdmiOutputSettingChange to: ${hdmiOutput}`);
-
-        // await this.setCameraSettings({
-        //     ...this.currentCameraSettings,
-        //     videoPreview: hdmiOutput
-        // });
-
-        return {
-            value: this.currentCameraSettings.videoPreview,
-            status: 'completed'
-        };
-    }
-
-    private async initializeCamera(cameraSettings: any): Promise<boolean> {
-        this.logger.log(['CameraService', 'info'], `Starting camera initial configuration`);
-
-        try {
-            let result = false;
-
-            result = await this.configureVideoPreview(cameraSettings);
-
-            if (result === true && cameraSettings.videoPreview) {
-                result = await this.configureVAMProcessing(cameraSettings);
-
-                if (result === true) {
-                    this.logger.log(['CameraService', 'info'], `Starting inference processing service`);
-
-                    result = await this.inferenceProcessor.startInferenceProcessor(this.rtspVamUrl, this.rtspVideoUrl);
-                }
-            }
-
-            return result;
-        }
-        catch (ex) {
-            this.logger.log(['CameraService', 'error'], `Failed during initSession: ${ex.message}`);
-
-            return false;
-        }
-    }
-
-    private async getRtspVamUrl(): Promise<boolean> {
-        try {
-            const response = await this.ipcGetRequest('/vam');
-            const result = JSON.parse(response);
-
-            this.rtspVamUrl = result.url || '';
-
-            return result.status;
-        }
-        catch (ex) {
-            this.logger.log(['CameraService', 'error'], ex.message);
-
-            return false;
-        }
-    }
-
-    private getRtspVideoUrl(): boolean {
-        this.rtspVideoUrl = `rtsp://${this.ipAddresses.cameraIpAddress}:${this.rtspVideoPort}/live`;
-
-        return true;
     }
 
     private async ipcLogin(): Promise<boolean> {
