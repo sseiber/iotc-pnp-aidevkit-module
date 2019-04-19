@@ -365,13 +365,12 @@ export class CameraService extends EventEmitter {
 
     @bind
     private async handleHdmiOutputSettingChange(hdmiOutput: boolean): Promise<any> {
-        this.logger.log(['CameraService', 'info'], `Received HdmiOutputSettingChange to: ${hdmiOutput}`);
+        this.logger.log(['CameraService', 'info'], `Handle setting change for HdmiOutputSetting: ${hdmiOutput}`);
 
         if (this.currentCameraSettings.videoPreview !== hdmiOutput) {
-            await this.setCameraSettings({
-                ...this.currentCameraSettings,
-                videoPreview: hdmiOutput
-            });
+            this.currentCameraSettings.videoPreview = hdmiOutput;
+
+            await this.setCameraSettings(this.currentCameraSettings);
         }
 
         return {

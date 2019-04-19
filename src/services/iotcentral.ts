@@ -473,7 +473,7 @@ export class IoTCentralService {
             try {
                 await (this.server.methods.camera as any).switchVisionAiModel({ type: 'url', fileUrl });
 
-                await (this.server.methods.fileHandler as any).signalRestart('iotcClientRestartCommand');
+                // await (this.server.methods.fileHandler as any).signalRestart('iotcClientRestartCommand');
             }
             catch {
                 this.logger.log(['IoTCentralService', 'error'], `An exception occurred while trying to switch the vision ai model`);

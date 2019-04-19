@@ -210,6 +210,8 @@ export class FileHandlerService {
             const fileParse = pathParse(fileUrl);
             const fileName = _get(fileParse, 'base') || '';
             let receivedBytes = 0;
+            let progressChunk = 0;
+            let progressTotal = 0;
 
             if (!fileName) {
                 return '';
@@ -225,13 +227,17 @@ export class FileHandlerService {
                         return reject(error);
                     })
                     .on('response', (data) => {
-                        const totalBytes = parseInt(data.headers['content-length'], 10);
+                        const totalBytes = parseInt(data.headers['content-length'], 10) || 1;
+                        progressChunk = Math.floor(totalBytes / 10);
+
                         this.logger.log(['FileHandler', 'info'], `Downloading model package - total bytes: ${totalBytes}`);
                     })
                     .on('data', (chunk) => {
                         receivedBytes += chunk.length;
 
-                        if (receivedBytes % 16384 === 0) {
+                        if (receivedBytes > (progressTotal + progressChunk)) {
+                            progressTotal += progressChunk;
+
                             this.logger.log(['FileHandler', 'info'], `Downloading model package - received bytes: ${receivedBytes}`);
                         }
                     })

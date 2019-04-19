@@ -110,7 +110,7 @@ export class InferenceProcessorService {
 
     @bind
     private async handleInferenceThresholdSettingChange(inferenceThreshold: number): Promise<any> {
-        this.logger.log(['IoTCentralService', 'info'], `Handle property change for InferenceThreshold setting`);
+        this.logger.log(['IoTCentralService', 'info'], `Handle setting change for InferenceThreshold: ${inferenceThreshold}`);
 
         this.confidenceThreshold = inferenceThreshold;
 
