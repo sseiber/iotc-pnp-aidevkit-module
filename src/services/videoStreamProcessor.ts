@@ -65,7 +65,7 @@ export class VideoStreamController {
             this.ffmpegProcess = spawn(ffmpegCommand, this.ffmpegCommandArgs.replace('###VIDEO_SOURCE', videoSource).split(' '), { stdio: ['ignore', 'pipe', 'ignore'] });
 
             this.ffmpegProcess.on('error', (error) => {
-                this.logger.log(['videoController', 'error'], `Error on ffmpegProcess: ${error}`);
+                this.logger.log(['videoController', 'error'], `Error on ffmpegProcess: ${_get(error, 'message')}`);
 
                 forget(this.iotCentral.sendMeasurement, MessageType.Event, { [DeviceEvent.VideoStreamProcessingError]: _get(error, 'message') });
 
@@ -93,7 +93,7 @@ export class VideoStreamController {
 
             this.ffmpegProcess.stdout.pipe(frameProcessor);
 
-            forget(this.iotCentral.sendMeasurement, MessageType.Event, { [DeviceEvent.VideoStreamProcessingStarted]: '1' });
+            await this.iotCentral.sendMeasurement(MessageType.Event, { [DeviceEvent.VideoStreamProcessingStarted]: '1' });
 
             return true;
         }

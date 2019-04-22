@@ -43,7 +43,7 @@ export class DataStreamController {
             this.gstProcess.on('error', (error) => {
                 this.logger.log(['dataController', 'error'], `Error on gstProcess: ${_get(error, 'message')}`);
 
-                forget(this.iotCentral.sendMeasurement, MessageType.Event, { [DeviceEvent.DataStreamProcessingError]: '1' });
+                forget(this.iotCentral.sendMeasurement, MessageType.Event, { [DeviceEvent.DataStreamProcessingError]: _get(error, 'message') });
 
                 this.restartController();
             });
@@ -51,7 +51,7 @@ export class DataStreamController {
             this.gstProcess.on('exit', (code, signal) => {
                 this.logger.log(['dataController', 'info'], `Exit on gstProcess, code: ${code}, signal: ${signal}`);
 
-                forget(this.iotCentral.sendMeasurement, MessageType.Event, { [DeviceEvent.DataStreamProcessingStopped]: '0' });
+                forget(this.iotCentral.sendMeasurement, MessageType.Event, { [DeviceEvent.DataStreamProcessingStopped]: '1' });
 
                 if (this.gstProcess !== null) {
                     // abnormal exit

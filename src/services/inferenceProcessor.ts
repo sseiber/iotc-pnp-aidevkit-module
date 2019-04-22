@@ -5,8 +5,8 @@ import { ConfigService } from './config';
 import { SubscriptionService } from '../services/subscription';
 import { DataStreamController } from '../services/dataStreamProcessor';
 import { VideoStreamController } from '../services/videoStreamProcessor';
-import { IoTCentralService, DeviceTelemetry, MessageType } from '../services/iotcentral';
-import { sleep, bind, forget } from '../utils';
+import { IoTCentralService, DeviceEvent, MessageType } from '../services/iotcentral';
+import { sleep, bind } from '../utils';
 import * as _get from 'lodash.get';
 
 const defaultConfidenceThreshold: number = 70;
@@ -101,7 +101,7 @@ export class InferenceProcessorService {
         this.lastImageData = imageData;
     }
 
-    public getHealth(): number[] {
+    public async getHealth(): Promise<number[]> {
         return [
             this.dataStreamController.getHealth(),
             this.videoStreamController.getHealth()
@@ -120,7 +120,7 @@ export class InferenceProcessorService {
         };
     }
 
-    private async publishInference(inference) {
+    private async publishInference(inference): Promise<void> {
         const trackTimeout = Date.now();
         this.lastImageData = null;
         while ((Date.now() - trackTimeout) < (1000 * 5) && this.lastImageData === null) {
@@ -132,11 +132,11 @@ export class InferenceProcessorService {
             imageData: this.lastImageData || Buffer.from('')
         });
 
-        // const data = {
-        //     count: inference.inferences.length,
-        //     classes: inference.inferences.map(inferenceItem => _get(inferenceItem, 'display_name') || 'Unkonwn')
-        // };
+        const data = {
+            count: inference.inferences.length,
+            classes: inference.inferences.map(inferenceItem => _get(inferenceItem, 'display_name') || 'Unkonwn')
+        };
 
-        forget(this.iotCentral.sendMeasurement, MessageType.Telemetry, { [DeviceTelemetry.Inference]: inference.inferences.length });
+        await this.iotCentral.sendMeasurement(MessageType.Event, { [DeviceEvent.Inference]: data.classes.join(', ') });
     }
 }
