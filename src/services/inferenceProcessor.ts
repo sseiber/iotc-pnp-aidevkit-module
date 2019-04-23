@@ -1,10 +1,11 @@
 import { service, inject } from 'spryly';
+import { Server } from 'hapi';
 import { LoggingService } from './logging';
 import { ConfigService } from './config';
 import { SubscriptionService } from '../services/subscription';
 import { DataStreamController } from '../services/dataStreamProcessor';
 import { VideoStreamController } from '../services/videoStreamProcessor';
-import { IoTCentralService, DeviceTelemetry, DeviceEvent, MessageType } from '../services/iotcentral';
+import { IoTCentralService, DeviceTelemetry, MessageType } from '../services/iotcentral';
 import { sleep, bind, forget } from '../utils';
 import * as _get from 'lodash.get';
 
@@ -12,6 +13,9 @@ const defaultConfidenceThreshold: number = 70;
 
 @service('inferenceProcessor')
 export class InferenceProcessorService {
+    @inject('$server')
+    private server: Server;
+
     @inject('logger')
     private logger: LoggingService;
 
@@ -39,7 +43,7 @@ export class InferenceProcessorService {
         this.dataStreamController.setInferenceCallback(this.handleDataInference);
         this.videoStreamController.setVideoFrameCallback(this.handleVideoFrame);
 
-        this.iotCentral.setInferenceThresholdSettingChangeCallback(this.handleInferenceThresholdSettingChange);
+        this.server.method({ name: 'inferenceProcessor.inferenceThresholdSettingChange', method: this.handleInferenceThresholdSettingChange });
     }
 
     public async startInferenceProcessor(rtspDataUrl: string, rtspVideoUrl: string) {
@@ -49,18 +53,12 @@ export class InferenceProcessorService {
             result = await this.videoStreamController.startVideoStreamProcessor(rtspVideoUrl);
         }
 
-        if (result === true) {
-            forget(this.iotCentral.sendMeasurement, MessageType.Event, { [DeviceEvent.InferenceProcessingStarted]: '1' });
-        }
-
         return result;
     }
 
     public stopInferenceProcessor() {
         this.videoStreamController.stopVideoStreamProcessor();
         this.dataStreamController.stopDataStreamProcessor();
-
-        forget(this.iotCentral.sendMeasurement, MessageType.Event, { [DeviceEvent.InferenceProcessingStopped]: '0' });
     }
 
     @bind
@@ -103,9 +101,16 @@ export class InferenceProcessorService {
         this.lastImageData = imageData;
     }
 
+    public getHealth(): number[] {
+        return [
+            this.dataStreamController.getHealth(),
+            this.videoStreamController.getHealth()
+        ];
+    }
+
     @bind
-    private async handleInferenceThresholdSettingChange(inferenceThreshold): Promise<any> {
-        this.logger.log(['IoTCentralService', 'info'], `Handle property change for InferenceThreshold setting`);
+    private async handleInferenceThresholdSettingChange(inferenceThreshold: number): Promise<any> {
+        this.logger.log(['IoTCentralService', 'info'], `Handle setting change for InferenceThreshold: ${inferenceThreshold}`);
 
         this.confidenceThreshold = inferenceThreshold;
 

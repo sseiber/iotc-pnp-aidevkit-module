@@ -2,7 +2,10 @@ import { service, inject } from 'spryly';
 import { spawn } from 'child_process';
 import { LoggingService } from './logging';
 import { Transform } from 'stream';
+import { IoTCentralService, DeviceEvent, MessageType } from '../services/iotcentral';
 import { bind, forget } from '../utils';
+import * as _get from 'lodash.get';
+import { HealthStates } from './serverTypes';
 
 const gstCommand = 'gst-launch-1.0';
 const gstCommandArgs = '-q rtspsrc location=###DATA_STREAM_URL protocols=tcp ! application/x-rtp, media=application ! fakesink dump=true';
@@ -12,9 +15,13 @@ export class DataStreamController {
     @inject('logger')
     private logger: LoggingService;
 
+    @inject('iotCentral')
+    private iotCentral: IoTCentralService;
+
     private handleDataInferenceCallback: any = null;
     private dataStreamUrl: string = '';
     private gstProcess: any = null;
+    private restartCount: number = 0;
 
     public setInferenceCallback(handleInference: any) {
         this.handleDataInferenceCallback = handleInference;
@@ -34,12 +41,23 @@ export class DataStreamController {
             this.gstProcess = spawn(gstCommand, gstCommandArgs.replace('###DATA_STREAM_URL', dataStreamUrl).split(' '), { stdio: ['ignore', 'pipe', 'ignore'] });
 
             this.gstProcess.on('error', (error) => {
-                this.logger.log(['dataController', 'error'], `Error on gstProcess: ${error}`);
+                this.logger.log(['dataController', 'error'], `Error on gstProcess: ${_get(error, 'message')}`);
+
+                forget(this.iotCentral.sendMeasurement, MessageType.Event, { [DeviceEvent.DataStreamProcessingError]: '1' });
+
                 this.restartController();
             });
 
             this.gstProcess.on('exit', (code, signal) => {
                 this.logger.log(['dataController', 'info'], `Exit on gstProcess, code: ${code}, signal: ${signal}`);
+
+                forget(this.iotCentral.sendMeasurement, MessageType.Event, { [DeviceEvent.DataStreamProcessingStopped]: '0' });
+
+                if (this.gstProcess !== null) {
+                    // abnormal exit
+                    this.restartController();
+                }
+
                 this.gstProcess = null;
             });
 
@@ -50,6 +68,8 @@ export class DataStreamController {
             });
 
             this.gstProcess.stdout.pipe(frameProcessor);
+
+            forget(this.iotCentral.sendMeasurement, MessageType.Event, { [DeviceEvent.DataStreamProcessingStarted]: '1' });
 
             return true;
         }
@@ -73,18 +93,34 @@ export class DataStreamController {
         return;
     }
 
+    public getHealth(): number {
+        if (this.restartCount > 5) {
+            return HealthStates.Critical;
+        }
+
+        return HealthStates.Good;
+    }
+
     private restartController() {
+        if (this.restartCount === 0) {
+            setTimeout(() => {
+                this.restartCount = 0;
+            }, (1000 * 120));
+        }
+
+        this.restartCount++;
+
         if (this.gstProcess === null) {
             return;
         }
 
         this.gstProcess = null;
 
-        this.logger.log(['dataController', 'info'], `Abnormal exit, will attempt to restart in 5sec.`);
+        this.logger.log(['dataController', 'info'], `Abnormal exit, will attempt to restart in 10sec.`);
 
         setTimeout(() => {
             forget(this.startDataStreamProcessor, this.dataStreamUrl);
-        }, (1000 * 5));
+        }, (1000 * 10));
     }
 }
 

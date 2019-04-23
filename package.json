@@ -1,6 +1,6 @@
 {
   "name": "peabody-local-service",
-  "version": "1.0.70",
+  "version": "1.0.90",
   "description": "Local service for AI Dev Kit",
   "main": "index.js",
   "config": {
@@ -42,6 +42,7 @@
     "nconf": "^0.10.0",
     "nes": "^10.0.2",
     "netmask": "^1.0.6",
+    "pjson": "^1.0.9",
     "query-string": "^6.4.2",
     "request": "^2.88.0",
     "spryly": "^1.0.13",
