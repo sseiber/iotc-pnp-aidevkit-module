@@ -377,14 +377,18 @@ export class CameraService extends EventEmitter {
         };
 
         switch (setting) {
-            case DeviceSetting.HdmiOutput:
-                this.currentCameraSettings.videoPreview = value;
+            case DeviceSetting.HdmiOutput: {
+                if (this.currentCameraSettings.videoPreview !== value) {
+                    this.currentCameraSettings.videoPreview = value;
 
-                const settingsResult = await this.setCameraSettings(this.currentCameraSettings);
-                result.status = settingsResult.status ? 'completed' : 'error';
+                    const settingsResult = await this.setCameraSettings(this.currentCameraSettings);
+                    result.status = settingsResult.status ? 'completed' : 'error';
+                }
+
                 result.value = this.currentCameraSettings.videoPreview;
 
                 break;
+            }
 
             default:
                 this.logger.log(['CameraService', 'info'], `Unknown setting change request ${setting}`);
