@@ -12,7 +12,7 @@ import { StateService } from './state';
 import { InferenceProcessorService } from '../services/inferenceProcessor';
 import { FileHandlerService } from './fileHandler';
 import { IoTCentralService, MessageType, DeviceTelemetry, DeviceState, DeviceEvent, DeviceSetting, DeviceProperty } from '../services/iotcentral';
-import { ICameraResult, HealthStates } from './serverTypes';
+import { ICameraResult, HealthState } from './serverTypes';
 import { bind, sleep, forget } from '../utils';
 
 export const defaultresolutionSelectVal: number = 1;
@@ -104,6 +104,10 @@ export class CameraService extends EventEmitter {
     public async init(): Promise<void> {
         this.logger.log(['CameraService', 'info'], 'initialize');
 
+        this.server.method({ name: 'camera.startCamera', method: this.startCamera });
+        this.server.method({ name: 'camera.switchVisionAiModel', method: this.handleSwitchVisionAiModel });
+        this.server.method({ name: 'camera.hdmiOutputSettingChange', method: this.handleHdmiOutputSettingChange });
+
         this.cameraUserName = this.config.get('cameraUsername') || defaultCameraUsername;
         this.cameraPassword = this.config.get('cameraPassword') || defaultCameraPassword;
         this.maxLoginAttempts = this.config.get('maxLoginAttemps') || defaultMaxLoginAttempts;
@@ -111,12 +115,8 @@ export class CameraService extends EventEmitter {
         this.ipcPort = this.config.get('ipcPort') || defaultIpcPort;
 
         setInterval(() => {
-            forget(this.checkHealthState());
+            forget(this.checkHealthState);
         }, (1000 * 15));
-
-        this.server.method({ name: 'camera.startCamera', method: this.startCamera });
-        this.server.method({ name: 'camera.switchVisionAiModel', method: this.handleSwitchVisionAiModel });
-        this.server.method({ name: 'camera.hdmiOutputSettingChange', method: this.handleHdmiOutputSettingChange });
     }
 
     @bind
@@ -344,12 +344,12 @@ export class CameraService extends EventEmitter {
         const iotCentralHealth = await this.iotCentral.getHealth();
         const fileHandlerHealth = await this.fileHandler.getHealth();
 
-        if (inferenceProcessorHealth[0] === HealthStates.Critical
-            || inferenceProcessorHealth[1] === HealthStates.Critical
-            || iotCentralHealth === HealthStates.Critical
-            || fileHandlerHealth === HealthStates.Critical) {
+        if (inferenceProcessorHealth[0] < HealthState.Good
+            || inferenceProcessorHealth[1] < HealthState.Good
+            || iotCentralHealth < HealthState.Good
+            || fileHandlerHealth < HealthState.Good) {
 
-            this.logger.log(['CameraService', 'info'], `Health check critical: `
+            this.logger.log(['CameraService', 'info'], `Health check watch: `
                 + `ds:${inferenceProcessorHealth[0]} `
                 + `dv:${inferenceProcessorHealth[1]} `
                 + `iot:${iotCentralHealth} `
@@ -357,12 +357,14 @@ export class CameraService extends EventEmitter {
 
             await (this.server.methods.fileHandler as any).signalRestart(`checkHealthState`);
 
-            return HealthStates.Critical;
+            return HealthState.Critical;
         }
 
-        await this.iotCentral.sendMeasurement(MessageType.Telemetry, { [DeviceTelemetry.CameraSystemHeartbeat]: HealthStates.Good });
+        await this.iotCentral.sendMeasurement(
+            MessageType.Telemetry,
+            { [DeviceTelemetry.CameraSystemHeartbeat]:  inferenceProcessorHealth[0] + inferenceProcessorHealth[1] + iotCentralHealth + fileHandlerHealth});
 
-        return HealthStates.Good;
+        return HealthState.Good;
     }
 
     @bind
@@ -484,7 +486,7 @@ export class CameraService extends EventEmitter {
                 encodeModeSelectVal: (cameraSettings.encodeModeVal < encoders.length) ? cameraSettings.encodeModeVal : defaultencodeModeSelectVal,
                 bitRateSelectVal: (cameraSettings.bitRateVal < bitRates.length) ? cameraSettings.bitRateVal : defaultbitRateSelectVal,
                 fpsSelectVal: (cameraSettings.fpsSelectVal < frameRates.length) ? cameraSettings.fpsVal : defaultfpsSelectVal,
-                displayOut: cameraSettings.videoPreview
+                displayOut: cameraSettings.videoPreview ? 1 : 0
             };
 
             let result = await this.ipcPostRequest('/video', payload);

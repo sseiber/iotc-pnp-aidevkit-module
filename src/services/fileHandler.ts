@@ -15,7 +15,7 @@ import { writeFileSync } from 'jsonfile';
 import * as request from 'request';
 import * as _get from 'lodash.get';
 import { bind, pjson } from '../utils';
-import { HealthStates } from './serverTypes';
+import { HealthState } from './serverTypes';
 
 const defaultFileUploadFolder: string = 'storage';
 const defaultUnzipCommand: string = 'unzip -d ###UNZIPDIR ###TARGET';
@@ -59,6 +59,9 @@ export class FileHandlerService {
     public async init(): Promise<void> {
         this.logger.log(['FileHandler', 'info'], 'initialize');
 
+        this.server.method({ name: 'fileHandler.provisionDockerImage', method: this.provisionDockerImage });
+        this.server.method({ name: 'fileHandler.signalRestart', method: this.signalRestart });
+
         this.fileUploadFolder = this.config.get('fileUploadFolder') || defaultFileUploadFolder;
         this.unzipCommand = this.config.get('unzipCommand') || defaultUnzipCommand;
         this.storageFolderPath = pathJoin((this.server.settings.app as any).hostRootDirectory, this.fileUploadFolder);
@@ -68,15 +71,6 @@ export class FileHandlerService {
         this.dockerImageName = this.config.get('dockerImageName') || defaultDockerImageName;
 
         this.dockerImageVersion = _get(pjson(), 'version') || '0.0.0';
-
-        this.server.method({
-            name: 'fileHandler.provisionDockerImage',
-            method: this.provisionDockerImage
-        });
-        this.server.method({
-            name: 'fileHandler.signalRestart',
-            method: this.signalRestart
-        });
     }
 
     @bind
@@ -168,7 +162,7 @@ export class FileHandlerService {
         const destFilePath = `${this.storageFolderPath}/${destFileName}`;
 
         const contentType = _get(file, 'hapi.headers.content-type');
-        if (contentType !== 'application/zip') {
+        if (contentType !== 'application/zip' && contentType !== 'application/x-zip-compressed') {
             this.logger.log(['FileHandler', 'error'], `Expected application/zip type but got: ${contentType}`);
             return '';
         }
@@ -327,17 +321,18 @@ export class FileHandlerService {
                 }, (1000 * 60 * 5));
             });
 
-            throw new Error('Failed to auto-reboot after 5 minutes... Container will restart now.');
+            this.logger.log(['FileHandler', 'info'], `Failed to auto-restart after 5 minutes... Container will restart now.`);
         }
         catch (ex) {
-            this.logger.log(['FileHandler', 'info'], ex.message);
-
-            throw new Error('Container encountered an error and needs to restart');
+            this.logger.log(['FileHandler', 'error'], `Failed to auto-restart: ${ex.message}`);
         }
+
+        // let Docker restart out container
+        process.exit(1);
     }
 
     public async getHealth(): Promise<number> {
-        return HealthStates.Good;
+        return HealthState.Good;
     }
 
     private async removeDockerImages(): Promise<void> {
@@ -353,7 +348,7 @@ export class FileHandlerService {
                 const imageVersion = imageName.split(':')[1];
 
                 if (imageVersion < this.dockerImageVersion) {
-                    this.logger.log(['AgentService', 'info', 'removeJigsawContainer'], `Removing (-f) container id: ${imageId}`);
+                    this.logger.log(['FileHandler', 'info'], `Removing (-f) container id: ${imageId}`);
 
                     const options = {
                         method: 'DELETE',

@@ -7,7 +7,7 @@ import { LoggingService } from './logging';
 import { ConfigService } from './config';
 import { StateService } from './state';
 import { sleep, bind, forget } from '../utils';
-import { HealthStates } from './serverTypes';
+import { HealthState } from './serverTypes';
 import * as AzureIotDeviceMqtt from 'azure-iot-device-mqtt';
 import * as AzureIotDevice from 'azure-iot-device';
 
@@ -137,6 +137,10 @@ export class IoTCentralService {
     }
 
     public async init(): Promise<void> {
+        this.logger.log(['IoTCentral', 'info'], 'initialize');
+
+        this.server.method({ name: 'iotCentral.connectToIoTCentral', method: this.connectToIoTCentral });
+
         this.iotCentralScopeIdInternal = this.config.get('iotCentralScopeId') || '';
         this.iotCentralTemplateIdInternal = this.config.get('iotCentralTemplateId') || '';
         this.iotCentralTemplateVersionInternal = this.config.get('iotCentralTemplateVersion') || '';
@@ -146,11 +150,6 @@ export class IoTCentralService {
         this.iotCentralDpsRegistrationSuffix = this.config.get('iotCentralDpsRegistrationSuffix') || defaultIotCentralDpsRegistrationSuffix;
         this.iotCentralDpsOperationsSuffix = this.config.get('iotCentralDpsOperationsSuffix') || defaultIotCentralDpsOperationsSuffix;
         this.iotCentralExpiryHours = this.config.get('iotCentralExpiryHours') || defaultIotCentralExpiryHours;
-
-        this.server.method({
-            name: 'iotCentral.connectToIoTCentral',
-            method: this.connectToIoTCentral
-        });
     }
 
     @bind
@@ -356,7 +355,7 @@ export class IoTCentralService {
     }
 
     public async getHealth(): Promise<number> {
-        return HealthStates.Good;
+        return HealthState.Good;
     }
 
     @bind

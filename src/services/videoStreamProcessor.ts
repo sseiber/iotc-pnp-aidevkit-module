@@ -1,13 +1,14 @@
 import { service, inject } from 'spryly';
+import { Server } from 'hapi';
 import { spawn } from 'child_process';
 import { LoggingService } from './logging';
 import { ConfigService } from './config';
 import { IoTCentralService, DeviceEvent, MessageType } from '../services/iotcentral';
 import { Transform } from 'stream';
 import { platform as osPlatform } from 'os';
-import { bind, forget } from '../utils';
+import { forget } from '../utils';
 import * as _get from 'lodash.get';
-import { HealthStates } from './serverTypes';
+import { HealthState } from './serverTypes';
 
 const rtspVideoCaptureSource = 'rtsp';
 const ffmpegCommand = 'ffmpeg';
@@ -17,6 +18,9 @@ const ffmpegRtspCommandArgs = '-i ###VIDEO_SOURCE -loglevel quiet -an -f image2p
 
 @service('videoStreamController')
 export class VideoStreamController {
+    @inject('$server')
+    private server: Server;
+
     @inject('logger')
     private logger: LoggingService;
 
@@ -26,12 +30,10 @@ export class VideoStreamController {
     @inject('iotCentral')
     private iotCentral: IoTCentralService;
 
-    private handleVideoFrameCallback: any = null;
-    private videoStreamUrl: string = '';
     private videoCaptureSource: string = rtspVideoCaptureSource;
     private ffmpegProcess: any = null;
     private ffmpegCommandArgs: string = '';
-    private restartCount: number = 0;
+    private healthState: number = HealthState.Good;
 
     public async init(): Promise<void> {
         this.videoCaptureSource = this.config.get('videoCaptureSource') || rtspVideoCaptureSource;
@@ -45,14 +47,7 @@ export class VideoStreamController {
         }
     }
 
-    public setVideoFrameCallback(handleVideoFrame: any) {
-        this.handleVideoFrameCallback = handleVideoFrame;
-    }
-
-    @bind
     public async startVideoStreamProcessor(videoStreamUrl: string): Promise<boolean> {
-        this.videoStreamUrl = videoStreamUrl;
-
         if (!videoStreamUrl) {
             this.logger.log(['DataStreamController', 'warning'], `Not starting image capture processor because videoStreamUrl is empty`);
         }
@@ -69,7 +64,7 @@ export class VideoStreamController {
 
                 forget(this.iotCentral.sendMeasurement, MessageType.Event, { [DeviceEvent.VideoStreamProcessingError]: _get(error, 'message') });
 
-                this.restartController();
+                this.healthState = HealthState.Critical;
             });
 
             this.ffmpegProcess.on('exit', (code, signal) => {
@@ -79,7 +74,7 @@ export class VideoStreamController {
 
                 if (this.ffmpegProcess !== null) {
                     // abnormal exit
-                    this.restartController();
+                    this.healthState = HealthState.Warning;
                 }
 
                 this.ffmpegProcess = null;
@@ -88,7 +83,7 @@ export class VideoStreamController {
             const frameProcessor = new FrameProcessor({});
 
             frameProcessor.on('jpeg', (jpegData: any) => {
-                forget(this.handleVideoFrameCallback, jpegData);
+                forget((this.server.methods.inferenceProcessor as any).videoFrame, jpegData);
             });
 
             this.ffmpegProcess.stdout.pipe(frameProcessor);
@@ -118,33 +113,7 @@ export class VideoStreamController {
     }
 
     public getHealth(): number {
-        if (this.restartCount > 5) {
-            return HealthStates.Critical;
-        }
-
-        return HealthStates.Good;
-    }
-
-    private restartController() {
-        if (this.restartCount === 0) {
-            setTimeout(() => {
-                this.restartCount = 0;
-            }, (1000 * 120));
-        }
-
-        this.restartCount++;
-
-        if (this.ffmpegProcess === null) {
-            return;
-        }
-
-        this.ffmpegProcess = null;
-
-        this.logger.log(['dataController', 'info'], `Abnormal exit, will attempt to restart in 10sec.`);
-
-        setTimeout(() => {
-            forget(this.startVideoStreamProcessor, this.videoStreamUrl);
-        }, (1000 * 10));
+        return this.healthState;
     }
 }
 

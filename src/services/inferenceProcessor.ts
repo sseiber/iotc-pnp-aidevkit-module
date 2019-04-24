@@ -39,11 +39,13 @@ export class InferenceProcessorService {
     private confidenceThreshold: number = defaultConfidenceThreshold;
 
     public async init(): Promise<void> {
-        this.confidenceThreshold = Number(this.config.get('confidenceThreshold')) || defaultConfidenceThreshold;
-        this.dataStreamController.setInferenceCallback(this.handleDataInference);
-        this.videoStreamController.setVideoFrameCallback(this.handleVideoFrame);
+        this.logger.log(['InferenceProcessor', 'info'], 'initialize');
 
         this.server.method({ name: 'inferenceProcessor.inferenceThresholdSettingChange', method: this.handleInferenceThresholdSettingChange });
+        this.server.method({ name: 'inferenceProcessor.dataInference', method: this.handleDataInference });
+        this.server.method({ name: 'inferenceProcessor.videoFrame', method: this.handleDataInference });
+
+        this.confidenceThreshold = Number(this.config.get('confidenceThreshold')) || defaultConfidenceThreshold;
     }
 
     public async startInferenceProcessor(rtspDataUrl: string, rtspVideoUrl: string) {
