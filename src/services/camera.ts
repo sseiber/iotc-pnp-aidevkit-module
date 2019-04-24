@@ -106,7 +106,7 @@ export class CameraService extends EventEmitter {
 
         this.server.method({ name: 'camera.startCamera', method: this.startCamera });
         this.server.method({ name: 'camera.switchVisionAiModel', method: this.handleSwitchVisionAiModel });
-        this.server.method({ name: 'camera.hdmiOutputSettingChange', method: this.handleHdmiOutputSettingChange });
+        this.server.method({ name: 'camera.cameraSettingChange', method: this.handleCameraSettingChange });
 
         this.cameraUserName = this.config.get('cameraUsername') || defaultCameraUsername;
         this.cameraPassword = this.config.get('cameraPassword') || defaultCameraPassword;
@@ -362,25 +362,36 @@ export class CameraService extends EventEmitter {
 
         await this.iotCentral.sendMeasurement(
             MessageType.Telemetry,
-            { [DeviceTelemetry.CameraSystemHeartbeat]:  inferenceProcessorHealth[0] + inferenceProcessorHealth[1] + iotCentralHealth + fileHandlerHealth});
+            { [DeviceTelemetry.CameraSystemHeartbeat]: inferenceProcessorHealth[0] + inferenceProcessorHealth[1] + iotCentralHealth + fileHandlerHealth });
 
         return HealthState.Good;
     }
 
     @bind
-    private async handleHdmiOutputSettingChange(hdmiOutput: boolean): Promise<any> {
-        this.logger.log(['CameraService', 'info'], `Handle setting change for HdmiOutputSetting: ${hdmiOutput}`);
+    private async handleCameraSettingChange(setting: string, value: any): Promise<any> {
+        this.logger.log(['CameraService', 'info'], `Handle setting change for ${setting}: ${value}`);
 
-        if (this.currentCameraSettings.videoPreview !== hdmiOutput) {
-            this.currentCameraSettings.videoPreview = hdmiOutput;
-
-            await this.setCameraSettings(this.currentCameraSettings);
-        }
-
-        return {
-            value: this.currentCameraSettings.videoPreview,
+        const result = {
+            value,
             status: 'completed'
         };
+
+        switch (setting) {
+            case DeviceSetting.HdmiOutput:
+                this.currentCameraSettings.videoPreview = value;
+
+                const settingsResult = await this.setCameraSettings(this.currentCameraSettings);
+                result.status = settingsResult.status ? 'completed' : 'error';
+                result.value = this.currentCameraSettings.videoPreview;
+
+                break;
+
+            default:
+                this.logger.log(['CameraService', 'info'], `Unknown setting change request ${setting}`);
+                result.status = 'error';
+        }
+
+        return result;
     }
 
     @bind

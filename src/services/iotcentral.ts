@@ -19,7 +19,9 @@ export const MessageType = {
 };
 
 export const DeviceTelemetry = {
-    CameraSystemHeartbeat: 'telemetry_camera_system_heartbeat'
+    CameraSystemHeartbeat: 'telemetry_camera_system_heartbeat',
+    Detections: 'telemetry_detection_count',
+    AllDetections: 'telemetry_all_detections_count'
 };
 
 export const DeviceState = {
@@ -44,7 +46,8 @@ export const DeviceEvent = {
 
 export const DeviceSetting = {
     HdmiOutput: 'setting_hdmi_output',
-    InferenceThreshold: 'setting_inference_threshold'
+    InferenceThreshold: 'setting_inference_threshold',
+    DetectClass: 'setting_detect_class'
 };
 
 export const DeviceProperty = {
@@ -379,11 +382,12 @@ export class IoTCentralService {
 
             switch (setting) {
                 case DeviceSetting.HdmiOutput:
-                    changedSettingResult = await (this.server.methods.camera as any).hdmiOutputSettingChange(value);
+                    changedSettingResult = await (this.server.methods.camera as any).cameraSettingChange(setting, value);
                     break;
 
                 case DeviceSetting.InferenceThreshold:
-                    changedSettingResult = await (this.server.methods.inferenceProcessor as any).inferenceThresholdSettingChange(value);
+                case DeviceSetting.DetectClass:
+                    changedSettingResult = await (this.server.methods.inferenceProcessor as any).inferenceSettingChange(setting, value);
                     break;
 
                 default:

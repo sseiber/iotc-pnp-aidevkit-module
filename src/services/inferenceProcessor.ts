@@ -5,7 +5,7 @@ import { ConfigService } from './config';
 import { SubscriptionService } from '../services/subscription';
 import { DataStreamController } from '../services/dataStreamProcessor';
 import { VideoStreamController } from '../services/videoStreamProcessor';
-import { IoTCentralService, DeviceEvent, MessageType } from '../services/iotcentral';
+import { IoTCentralService, DeviceEvent, MessageType, DeviceSetting, DeviceTelemetry } from '../services/iotcentral';
 import { sleep, bind } from '../utils';
 import * as _get from 'lodash.get';
 
@@ -37,11 +37,12 @@ export class InferenceProcessorService {
     private inferenceCount: number = 0;
     private lastImageData: Buffer = null;
     private confidenceThreshold: number = defaultConfidenceThreshold;
+    private detectClass: string = 'person';
 
     public async init(): Promise<void> {
         this.logger.log(['InferenceProcessor', 'info'], 'initialize');
 
-        this.server.method({ name: 'inferenceProcessor.inferenceThresholdSettingChange', method: this.handleInferenceThresholdSettingChange });
+        this.server.method({ name: 'inferenceProcessor.inferenceSettingChange', method: this.handleInferenceSettingChange });
         this.server.method({ name: 'inferenceProcessor.dataInference', method: this.handleDataInference });
         this.server.method({ name: 'inferenceProcessor.videoFrame', method: this.handleDataInference });
 
@@ -70,7 +71,7 @@ export class InferenceProcessorService {
         if (inferences && Array.isArray(inferences)) {
             for (const inferenceItem of inferences) {
                 if (_get(inferenceItem, 'display_name') !== 'Negative') {
-                    this.logger.log(['DataStreamController', 'info'], `Inference: `
+                    this.logger.log(['InferenceProcessor', 'info'], `Inference: `
                         + `id:${_get(inferenceItem, 'id')} `
                         + `"${_get(inferenceItem, 'display_name')}" `
                         + `${_get(inferenceItem, 'confidence')}% `);
@@ -111,15 +112,29 @@ export class InferenceProcessorService {
     }
 
     @bind
-    private async handleInferenceThresholdSettingChange(inferenceThreshold: number): Promise<any> {
-        this.logger.log(['IoTCentralService', 'info'], `Handle setting change for InferenceThreshold: ${inferenceThreshold}`);
+    private async handleInferenceSettingChange(setting: string, value: any): Promise<any> {
+        this.logger.log(['InferenceProcessor', 'info'], `Handle setting change for ${setting}: ${value}`);
 
-        this.confidenceThreshold = inferenceThreshold;
-
-        return {
-            value: this.confidenceThreshold,
+        const result = {
+            value,
             status: 'completed'
         };
+
+        switch (setting) {
+            case DeviceSetting.InferenceThreshold:
+                this.confidenceThreshold = value;
+                break;
+
+            case DeviceSetting.DetectClass:
+                this.detectClass = value;
+                break;
+
+            default:
+                this.logger.log(['InferenceProcessor', 'info'], `Unknown setting change request ${setting}`);
+                result.status = 'error';
+        }
+
+        return result;
     }
 
     private async publishInference(inference): Promise<void> {
@@ -134,11 +149,19 @@ export class InferenceProcessorService {
             imageData: this.lastImageData || Buffer.from('')
         });
 
-        const data = {
-            count: inference.inferences.length,
-            classes: inference.inferences.map(inferenceItem => _get(inferenceItem, 'display_name') || 'Unkonwn')
-        };
+        let detectClassCount = 0;
+        const classes = inference.inferences.map(inferenceItem => {
+            const className = _get(inferenceItem, 'display_name');
 
-        await this.iotCentral.sendMeasurement(MessageType.Event, { [DeviceEvent.Inference]: data.classes.join(', ') });
+            if (className === this.detectClass) {
+                detectClassCount++;
+            }
+
+            return className || 'Unkonwn';
+        });
+
+        await this.iotCentral.sendMeasurement(MessageType.Telemetry, { [DeviceTelemetry.AllDetections]: inference.inferences.length });
+        await this.iotCentral.sendMeasurement(MessageType.Telemetry, { [DeviceTelemetry.Detections]: detectClassCount });
+        await this.iotCentral.sendMeasurement(MessageType.Event, { [DeviceEvent.Inference]: classes.join(', ') });
     }
 }
