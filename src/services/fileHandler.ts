@@ -17,6 +17,12 @@ import * as _get from 'lodash.get';
 import { bind, pjson } from '../utils';
 import { HealthState } from './serverTypes';
 
+export const ProvisionStatus = {
+    Installing: 'Installing',
+    Pending: 'Pending',
+    Completed: 'Completed'
+};
+
 const defaultFileUploadFolder: string = 'storage';
 const defaultUnzipCommand: string = 'unzip -d ###UNZIPDIR ###TARGET';
 const defaultModelFolderPath: string = '/data/misc/camera';
@@ -77,6 +83,8 @@ export class FileHandlerService {
     public async provisionDockerImage(): Promise<void> {
         this.logger.log(['FileHandler', 'info'], `Provisioning docker imgage`);
 
+        await this.iotCentral.updateDeviceProperties({ [DeviceProperty.ImageProvisionStatus]:  ProvisionStatus.Installing});
+
         const versionFilePath = pathResolve(this.storageFolderPath, 'image.ver');
 
         try {
@@ -99,12 +107,16 @@ export class FileHandlerService {
 
                         writeFileSync(versionFilePath, { version: this.dockerImageVersion });
 
+                        await this.iotCentral.updateDeviceProperties({ [DeviceProperty.ImageProvisionStatus]:  ProvisionStatus.Pending});
+
                         await this.signalRestart('provisionDockerImage-newImage');
                     }
                     else {
                         await this.iotCentral.sendMeasurement(MessageType.Event, { [DeviceEvent.ImageProvisionComplete]: this.dockerImageVersion });
 
                         await this.iotCentral.updateDeviceProperties({ [DeviceProperty.ImageVersion]: this.dockerImageVersion });
+
+                        await this.iotCentral.updateDeviceProperties({ [DeviceProperty.ImageProvisionStatus]:  ProvisionStatus.Completed});
                     }
                 }
             }
@@ -114,12 +126,17 @@ export class FileHandlerService {
 
                 writeFileSync(versionFilePath, { version: this.dockerImageVersion });
 
+                await this.iotCentral.updateDeviceProperties({ [DeviceProperty.ImageProvisionStatus]:  ProvisionStatus.Pending});
+
                 await this.signalRestart('provisionDockerImage-noFile');
             }
         }
         catch (ex) {
             this.logger.log(['FileHandler', 'error'], `Error during docker image provisioning: ${ex.message}`);
         }
+
+        // NOTE: a path exists here where there is no file contents for the 'imge.ver' file - this shoudln't happen
+        // process.exit(1)
     }
 
     public async extractAndVerifyModelFiles(fileName: any): Promise<boolean> {

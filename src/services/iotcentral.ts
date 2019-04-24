@@ -60,6 +60,7 @@ export const DeviceProperty = {
     Fps: 'prop_fps',
     Resolution: 'prop_resolution',
     ImageVersion: 'prop_image_version',
+    ImageProvisionStatus: 'prop_image_provision_status',
     VideoModelName: 'prop_video_model_name'
 };
 
