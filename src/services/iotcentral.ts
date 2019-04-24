@@ -7,7 +7,7 @@ import { LoggingService } from './logging';
 import { ConfigService } from './config';
 import { StateService } from './state';
 import { sleep, bind, forget } from '../utils';
-import { HealthStates } from './serverTypes';
+import { HealthState } from './serverTypes';
 import * as AzureIotDeviceMqtt from 'azure-iot-device-mqtt';
 import * as AzureIotDevice from 'azure-iot-device';
 
@@ -19,9 +19,9 @@ export const MessageType = {
 };
 
 export const DeviceTelemetry = {
-    Inference: 'telemetry_inference',
-    IoTCentralHeartbeat: 'telemetry_iotcentral_hearbeat',
-    CameraSystemHeartbeat: 'telemetry_camera_system_heartbeat'
+    CameraSystemHeartbeat: 'telemetry_camera_system_heartbeat',
+    Detections: 'telemetry_detection_count',
+    AllDetections: 'telemetry_all_detections_count'
 };
 
 export const DeviceState = {
@@ -40,23 +40,27 @@ export const DeviceEvent = {
     VideoStreamProcessingError: 'event_videostream_processing_error',
     VideoModelChange: 'event_video_model_change',
     DeviceRestart: 'event_device_restart',
-    ImageProvisionComplete: 'event_image_provision_complete'
+    ImageProvisionComplete: 'event_image_provision_complete',
+    Inference: 'event_inference'
 };
 
 export const DeviceSetting = {
     HdmiOutput: 'setting_hdmi_output',
-    InferenceThreshold: 'setting_inference_threshold'
+    InferenceThreshold: 'setting_inference_threshold',
+    DetectClass: 'setting_detect_class'
 };
 
 export const DeviceProperty = {
     IpAddress: 'prop_ip_address',
     RtspVideoUrl: 'prop_rtsp_video_url',
     RtspDataUrl: 'prop_rtsp_data_url',
+    IoTCentralConnectionStatus: 'prop_iotc_connection_status',
     Bitrate: 'prop_bitrate',
     Encoder: 'prop_encoder',
     Fps: 'prop_fps',
     Resolution: 'prop_resolution',
     ImageVersion: 'prop_image_version',
+    ImageProvisionStatus: 'prop_image_provision_status',
     VideoModelName: 'prop_video_model_name'
 };
 
@@ -79,12 +83,6 @@ const defaultIotCentralDpsEndpoint: string = 'https://global.azure-devices-provi
 const defaultIotCentralDpsRegistrationSuffix: string = '/register?api-version=###API_VERSION';
 const defaultIotCentralDpsOperationsSuffix: string = '/operations/###OPERATION_ID?api-version=###API_VERSION';
 const defaultIotCentralExpiryHours: string = '2';
-const IoTConnectionHeartbeatStatus = {
-    None: 0,
-    ClientConnected: 1,
-    ReceivedDeviceTwin: 2,
-    ReportedDeviceProperties: 3
-};
 
 @service('iotCentral')
 export class IoTCentralService {
@@ -117,8 +115,6 @@ export class IoTCentralService {
     private iotcDeviceTwin: any = null;
     private iotcClientConnected: boolean = false;
     private iotcTelemetryThrottleTimer: number = Date.now();
-    private heartbeatTimer: NodeJS.Timer = null;
-    private heartbeatStatus: number = IoTConnectionHeartbeatStatus.None;
 
     public get iotCentralScopeId() {
         return this.iotCentralScopeIdInternal;
@@ -145,6 +141,10 @@ export class IoTCentralService {
     }
 
     public async init(): Promise<void> {
+        this.logger.log(['IoTCentral', 'info'], 'initialize');
+
+        this.server.method({ name: 'iotCentral.connectToIoTCentral', method: this.connectToIoTCentral });
+
         this.iotCentralScopeIdInternal = this.config.get('iotCentralScopeId') || '';
         this.iotCentralTemplateIdInternal = this.config.get('iotCentralTemplateId') || '';
         this.iotCentralTemplateVersionInternal = this.config.get('iotCentralTemplateVersion') || '';
@@ -154,11 +154,6 @@ export class IoTCentralService {
         this.iotCentralDpsRegistrationSuffix = this.config.get('iotCentralDpsRegistrationSuffix') || defaultIotCentralDpsRegistrationSuffix;
         this.iotCentralDpsOperationsSuffix = this.config.get('iotCentralDpsOperationsSuffix') || defaultIotCentralDpsOperationsSuffix;
         this.iotCentralExpiryHours = this.config.get('iotCentralExpiryHours') || defaultIotCentralExpiryHours;
-
-        this.server.method({
-            name: 'iotCentral.connectToIoTCentral',
-            method: this.connectToIoTCentral
-        });
     }
 
     @bind
@@ -262,7 +257,7 @@ export class IoTCentralService {
             result = false;
         }
 
-        this.iotCentralConnectionStatusInternal = provisioningStatus;
+        this.iotCentralProvisioningStatusInternal = provisioningStatus;
 
         return result;
     }
@@ -283,11 +278,7 @@ export class IoTCentralService {
 
         if (result === true) {
             try {
-                this.heartbeatTimer = setInterval(this.sendHeartbeatStatus, (1000 * 15));
-
                 await this.iotcClient.open();
-
-                this.heartbeatStatus = IoTConnectionHeartbeatStatus.ClientConnected;
 
                 this.iotcClient.on('error', this.onIotcClientError);
 
@@ -297,15 +288,14 @@ export class IoTCentralService {
 
                 this.iotcDeviceTwin = await this.iotcClient.getTwin();
 
-                this.heartbeatStatus = IoTConnectionHeartbeatStatus.ReceivedDeviceTwin;
-
-                this.iotcDeviceTwin.on('properties.desired', this.onNewDeviceProperties);
+                this.iotcDeviceTwin.on('properties.desired', this.onHandleDeviceProperties);
 
                 this.iotcClientConnected = true;
 
-                await this.updateDeviceProperties(this.state.iotCentral.properties);
-
-                this.heartbeatStatus = IoTConnectionHeartbeatStatus.ReportedDeviceProperties;
+                await this.updateDeviceProperties({
+                    ...this.state.iotCentral.properties,
+                    [DeviceProperty.IoTCentralConnectionStatus]: connectionStatus
+                });
             }
             catch (ex) {
                 connectionStatus = `IoT Central connection error: ${ex.message}`;
@@ -315,13 +305,13 @@ export class IoTCentralService {
             }
         }
 
-        this.iotCentralProvisioningStatusInternal = connectionStatus;
+        this.iotCentralConnectionStatusInternal = connectionStatus;
 
         return result;
     }
 
     @bind
-    public async sendMeasurement(messageType: string, data: any) {
+    public async sendMeasurement(messageType: string, data: any): Promise<void> {
         if (!data || !this.iotcClientConnected) {
             return;
         }
@@ -330,12 +320,11 @@ export class IoTCentralService {
             return;
         }
 
-        this.iotcTelemetryThrottleTimer = Date.now();
-
-        const iotcMessage = new AzureIotDevice.Message(JSON.stringify(data));
-
         try {
-            // await this.iotcClientSendMeasurement(iotcMessage);
+            this.iotcTelemetryThrottleTimer = Date.now();
+
+            const iotcMessage = new AzureIotDevice.Message(JSON.stringify(data));
+
             await this.iotcClient.sendEvent(iotcMessage);
 
             this.logger.log(['IoTCentralService', 'info'], `Device ${messageType} message sent`);
@@ -369,12 +358,12 @@ export class IoTCentralService {
         }
     }
 
-    public getHealth(): number {
-        return HealthStates.Good;
+    public async getHealth(): Promise<number> {
+        return HealthState.Good;
     }
 
     @bind
-    private async onNewDeviceProperties(desiredChangedSettings: any) {
+    private async onHandleDeviceProperties(desiredChangedSettings: any) {
         for (const setting in desiredChangedSettings) {
             if (!desiredChangedSettings.hasOwnProperty(setting)) {
                 continue;
@@ -394,11 +383,12 @@ export class IoTCentralService {
 
             switch (setting) {
                 case DeviceSetting.HdmiOutput:
-                    changedSettingResult = await (this.server.methods.camera as any).hdmiOutputSettingChange(value);
+                    changedSettingResult = await (this.server.methods.camera as any).cameraSettingChange(setting, value);
                     break;
 
                 case DeviceSetting.InferenceThreshold:
-                    changedSettingResult = await (this.server.methods.inferenceProcessor as any).inferenceThresholdSettingChange(value);
+                case DeviceSetting.DetectClass:
+                    changedSettingResult = await (this.server.methods.inferenceProcessor as any).inferenceSettingChange(setting, value);
                     break;
 
                 default:
@@ -421,13 +411,6 @@ export class IoTCentralService {
         }
     }
 
-    @bind
-    private sendHeartbeatStatus() {
-        this.logger.log(['IoTCentralService', 'info'], `Heartbeat status: ${this.heartbeatStatus}`);
-
-        forget(this.sendMeasurement, MessageType.Telemetry, { [DeviceTelemetry.IoTCentralHeartbeat]: this.heartbeatStatus });
-    }
-
     private computDerivedSymmetricKey(secret: string, id: string): string {
         const secretBuffer = Buffer.from(secret, 'base64');
         const derivedSymmetricKey = crypto.createHmac('SHA256', secretBuffer).update(id, 'utf8').digest('base64');
@@ -439,10 +422,7 @@ export class IoTCentralService {
     private onIotcClientError(error: Error) {
         this.logger.log(['IoTCentralService', 'error'], `Client connection error: ${error.message}`);
 
-        if (this.heartbeatTimer) {
-            clearInterval(this.heartbeatTimer);
-            this.heartbeatTimer = null;
-        }
+        forget(this.updateDeviceProperties, { [DeviceProperty.IoTCentralConnectionStatus]: error.message });
     }
 
     @bind

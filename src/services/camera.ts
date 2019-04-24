@@ -12,7 +12,7 @@ import { StateService } from './state';
 import { InferenceProcessorService } from '../services/inferenceProcessor';
 import { FileHandlerService } from './fileHandler';
 import { IoTCentralService, MessageType, DeviceTelemetry, DeviceState, DeviceEvent, DeviceSetting, DeviceProperty } from '../services/iotcentral';
-import { ICameraResult, HealthStates } from './serverTypes';
+import { ICameraResult, HealthState } from './serverTypes';
 import { bind, sleep, forget } from '../utils';
 
 export const defaultresolutionSelectVal: number = 1;
@@ -104,17 +104,19 @@ export class CameraService extends EventEmitter {
     public async init(): Promise<void> {
         this.logger.log(['CameraService', 'info'], 'initialize');
 
+        this.server.method({ name: 'camera.startCamera', method: this.startCamera });
+        this.server.method({ name: 'camera.switchVisionAiModel', method: this.handleSwitchVisionAiModel });
+        this.server.method({ name: 'camera.cameraSettingChange', method: this.handleCameraSettingChange });
+
         this.cameraUserName = this.config.get('cameraUsername') || defaultCameraUsername;
         this.cameraPassword = this.config.get('cameraPassword') || defaultCameraPassword;
         this.maxLoginAttempts = this.config.get('maxLoginAttemps') || defaultMaxLoginAttempts;
         this.rtspVideoPort = this.config.get('rtspVideoPort') || defaultRtspVideoPort;
         this.ipcPort = this.config.get('ipcPort') || defaultIpcPort;
 
-        setInterval(this.checkHealthState, (1000 * 15));
-
-        this.server.method({ name: 'camera.startCamera', method: this.startCamera });
-        this.server.method({ name: 'camera.switchVisionAiModel', method: this.handleSwitchVisionAiModel });
-        this.server.method({ name: 'camera.hdmiOutputSettingChange', method: this.handleHdmiOutputSettingChange });
+        setInterval(() => {
+            forget(this.checkHealthState);
+        }, (1000 * 15));
     }
 
     @bind
@@ -158,7 +160,7 @@ export class CameraService extends EventEmitter {
             };
         }
         else {
-            forget(this.iotCentral.sendMeasurement, MessageType.Event, { [DeviceEvent.SessionLogin]: this.sessionToken });
+            await this.iotCentral.sendMeasurement(MessageType.Event, { [DeviceEvent.SessionLogin]: this.sessionToken });
 
             return {
                 ...this.getConfiguration(),
@@ -186,7 +188,7 @@ export class CameraService extends EventEmitter {
                     }
                 }
 
-                forget(this.iotCentral.sendMeasurement, MessageType.Event, { [DeviceEvent.SessionLogout]: this.sessionToken });
+                await this.iotCentral.sendMeasurement(MessageType.Event, { [DeviceEvent.SessionLogout]: this.sessionToken });
             }
 
             status = true;
@@ -207,7 +209,7 @@ export class CameraService extends EventEmitter {
             [DeviceState.Session]: 'Inactive'
         };
 
-        forget(this.iotCentral.sendMeasurement, MessageType.State, activeDeviceState);
+        await this.iotCentral.sendMeasurement(MessageType.State, activeDeviceState);
 
         return {
             ...this.getConfiguration(),
@@ -337,46 +339,63 @@ export class CameraService extends EventEmitter {
     }
 
     @bind
-    public checkHealthState(): number {
-        const inferenceProcessorHealth = this.inferenceProcessor.getHealth();
-        const iotCentralHealth = this.iotCentral.getHealth();
-        const fileHandlerHealth = this.fileHandler.getHealth();
+    public async checkHealthState(): Promise<number> {
+        const inferenceProcessorHealth = await this.inferenceProcessor.getHealth();
+        const iotCentralHealth = await this.iotCentral.getHealth();
+        const fileHandlerHealth = await this.fileHandler.getHealth();
 
-        if (inferenceProcessorHealth[0] === HealthStates.Critical
-            || inferenceProcessorHealth[1] === HealthStates.Critical
-            || iotCentralHealth === HealthStates.Critical
-            || fileHandlerHealth === HealthStates.Critical) {
+        if (inferenceProcessorHealth[0] < HealthState.Good
+            || inferenceProcessorHealth[1] < HealthState.Good
+            || iotCentralHealth < HealthState.Good
+            || fileHandlerHealth < HealthState.Good) {
 
-            this.logger.log(['CameraService', 'info'], `Health check critical: `
+            this.logger.log(['CameraService', 'info'], `Health check watch: `
                 + `ds:${inferenceProcessorHealth[0]} `
                 + `dv:${inferenceProcessorHealth[1]} `
                 + `iot:${iotCentralHealth} `
                 + `file:${fileHandlerHealth}`);
 
-            forget((this.server.methods.fileHandler as any).signalRestart, `checkHealthState`);
+            await (this.server.methods.fileHandler as any).signalRestart(`checkHealthState`);
 
-            return HealthStates.Critical;
+            return HealthState.Critical;
         }
 
-        forget(this.iotCentral.sendMeasurement, MessageType.Telemetry, { [DeviceTelemetry.CameraSystemHeartbeat]: HealthStates.Good });
+        await this.iotCentral.sendMeasurement(
+            MessageType.Telemetry,
+            { [DeviceTelemetry.CameraSystemHeartbeat]: inferenceProcessorHealth[0] + inferenceProcessorHealth[1] + iotCentralHealth + fileHandlerHealth });
 
-        return HealthStates.Good;
+        return HealthState.Good;
     }
 
     @bind
-    private async handleHdmiOutputSettingChange(hdmiOutput: boolean): Promise<any> {
-        this.logger.log(['CameraService', 'info'], `Handle setting change for HdmiOutputSetting: ${hdmiOutput}`);
+    private async handleCameraSettingChange(setting: string, value: any): Promise<any> {
+        this.logger.log(['CameraService', 'info'], `Handle setting change for ${setting}: ${value}`);
 
-        if (this.currentCameraSettings.videoPreview !== hdmiOutput) {
-            this.currentCameraSettings.videoPreview = hdmiOutput;
-
-            await this.setCameraSettings(this.currentCameraSettings);
-        }
-
-        return {
-            value: this.currentCameraSettings.videoPreview,
+        const result = {
+            value,
             status: 'completed'
         };
+
+        switch (setting) {
+            case DeviceSetting.HdmiOutput: {
+                if (this.currentCameraSettings.videoPreview !== value) {
+                    this.currentCameraSettings.videoPreview = value;
+
+                    const settingsResult = await this.setCameraSettings(this.currentCameraSettings);
+                    result.status = settingsResult.status ? 'completed' : 'error';
+                }
+
+                result.value = this.currentCameraSettings.videoPreview;
+
+                break;
+            }
+
+            default:
+                this.logger.log(['CameraService', 'info'], `Unknown setting change request ${setting}`);
+                result.status = 'error';
+        }
+
+        return result;
     }
 
     @bind
@@ -400,13 +419,13 @@ export class CameraService extends EventEmitter {
                     if (dlcFile) {
                         this.modelFile = dlcFile;
 
-                        forget(this.iotCentral.updateDeviceProperties, { [DeviceProperty.VideoModelName]: this.modelFile });
+                        await this.iotCentral.updateDeviceProperties({ [DeviceProperty.VideoModelName]: this.modelFile });
                     }
                 }
 
                 if (status === true) {
                     this.server.publish('/api/v1/subscription/model', this.modelFile);
-                    forget(this.iotCentral.sendMeasurement, MessageType.Event, { [DeviceEvent.VideoModelChange]: this.modelFile });
+                    await this.iotCentral.sendMeasurement(MessageType.Event, { [DeviceEvent.VideoModelChange]: this.modelFile });
                 }
             }
 
@@ -482,7 +501,7 @@ export class CameraService extends EventEmitter {
                 encodeModeSelectVal: (cameraSettings.encodeModeVal < encoders.length) ? cameraSettings.encodeModeVal : defaultencodeModeSelectVal,
                 bitRateSelectVal: (cameraSettings.bitRateVal < bitRates.length) ? cameraSettings.bitRateVal : defaultbitRateSelectVal,
                 fpsSelectVal: (cameraSettings.fpsSelectVal < frameRates.length) ? cameraSettings.fpsVal : defaultfpsSelectVal,
-                displayOut: cameraSettings.videoPreview
+                displayOut: cameraSettings.videoPreview ? 1 : 0
             };
 
             let result = await this.ipcPostRequest('/video', payload);
@@ -507,13 +526,13 @@ export class CameraService extends EventEmitter {
                     [DeviceProperty.Fps]: this.sessionToken ? frameRates[this.currentCameraSettings.fpsVal] : ''
                 };
 
-                forget(this.iotCentral.updateDeviceProperties, activeDeviceProperties);
+                await this.iotCentral.updateDeviceProperties(activeDeviceProperties);
 
                 const activeDeviceState = {
                     [DeviceSetting.HdmiOutput]: this.currentCameraSettings.videoPreview ? 1 : 0
                 };
 
-                forget(this.iotCentral.sendMeasurement, MessageType.State, activeDeviceState);
+                await this.iotCentral.sendMeasurement(MessageType.State, activeDeviceState);
             }
 
             return result;
@@ -561,14 +580,14 @@ export class CameraService extends EventEmitter {
                         [DeviceProperty.RtspDataUrl]: this.sessionToken ? this.rtspVamUrl : ''
                     };
 
-                    forget(this.iotCentral.updateDeviceProperties, activeDeviceProperties);
+                    await this.iotCentral.updateDeviceProperties(activeDeviceProperties);
 
                     const activeDeviceState = {
                         [DeviceState.InferenceProcessor]: this.currentCameraSettings.vamProcessing ? 'On' : 'Off',
                         [DeviceState.Session]: this.sessionToken ? 'Active' : 'Inactive'
                     };
 
-                    forget(this.iotCentral.sendMeasurement, MessageType.State, activeDeviceState);
+                    await this.iotCentral.sendMeasurement(MessageType.State, activeDeviceState);
                 }
             }
 

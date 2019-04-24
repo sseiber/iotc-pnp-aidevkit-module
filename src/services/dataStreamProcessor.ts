@@ -1,36 +1,31 @@
 import { service, inject } from 'spryly';
+import { Server } from 'hapi';
 import { spawn } from 'child_process';
 import { LoggingService } from './logging';
 import { Transform } from 'stream';
 import { IoTCentralService, DeviceEvent, MessageType } from '../services/iotcentral';
-import { bind, forget } from '../utils';
+import { forget } from '../utils';
 import * as _get from 'lodash.get';
-import { HealthStates } from './serverTypes';
+import { HealthState } from './serverTypes';
 
 const gstCommand = 'gst-launch-1.0';
 const gstCommandArgs = '-q rtspsrc location=###DATA_STREAM_URL protocols=tcp ! application/x-rtp, media=application ! fakesink dump=true';
 
 @service('dataStreamController')
 export class DataStreamController {
+    @inject('$server')
+    private server: Server;
+
     @inject('logger')
     private logger: LoggingService;
 
     @inject('iotCentral')
     private iotCentral: IoTCentralService;
 
-    private handleDataInferenceCallback: any = null;
-    private dataStreamUrl: string = '';
     private gstProcess: any = null;
-    private restartCount: number = 0;
+    private healthState: number = HealthState.Good;
 
-    public setInferenceCallback(handleInference: any) {
-        this.handleDataInferenceCallback = handleInference;
-    }
-
-    @bind
     public async startDataStreamProcessor(dataStreamUrl: string): Promise<boolean> {
-        this.dataStreamUrl = dataStreamUrl;
-
         if (!dataStreamUrl) {
             this.logger.log(['DataStreamController', 'warning'], `Not starting inference processor because dataStreamUrl is empty`);
         }
@@ -43,19 +38,19 @@ export class DataStreamController {
             this.gstProcess.on('error', (error) => {
                 this.logger.log(['dataController', 'error'], `Error on gstProcess: ${_get(error, 'message')}`);
 
-                forget(this.iotCentral.sendMeasurement, MessageType.Event, { [DeviceEvent.DataStreamProcessingError]: '1' });
+                forget(this.iotCentral.sendMeasurement, MessageType.Event, { [DeviceEvent.DataStreamProcessingError]: _get(error, 'message') });
 
-                this.restartController();
+                this.healthState = HealthState.Critical;
             });
 
             this.gstProcess.on('exit', (code, signal) => {
                 this.logger.log(['dataController', 'info'], `Exit on gstProcess, code: ${code}, signal: ${signal}`);
 
-                forget(this.iotCentral.sendMeasurement, MessageType.Event, { [DeviceEvent.DataStreamProcessingStopped]: '0' });
+                forget(this.iotCentral.sendMeasurement, MessageType.Event, { [DeviceEvent.DataStreamProcessingStopped]: '1' });
 
                 if (this.gstProcess !== null) {
                     // abnormal exit
-                    this.restartController();
+                    this.healthState = HealthState.Warning;
                 }
 
                 this.gstProcess = null;
@@ -64,7 +59,7 @@ export class DataStreamController {
             const frameProcessor = new FrameProcessor({});
 
             frameProcessor.on('inference', (inference: any) => {
-                forget(this.handleDataInferenceCallback, inference);
+                forget((this.server.methods.inferenceProcessor as any).dataInference, inference);
             });
 
             this.gstProcess.stdout.pipe(frameProcessor);
@@ -94,33 +89,7 @@ export class DataStreamController {
     }
 
     public getHealth(): number {
-        if (this.restartCount > 5) {
-            return HealthStates.Critical;
-        }
-
-        return HealthStates.Good;
-    }
-
-    private restartController() {
-        if (this.restartCount === 0) {
-            setTimeout(() => {
-                this.restartCount = 0;
-            }, (1000 * 120));
-        }
-
-        this.restartCount++;
-
-        if (this.gstProcess === null) {
-            return;
-        }
-
-        this.gstProcess = null;
-
-        this.logger.log(['dataController', 'info'], `Abnormal exit, will attempt to restart in 10sec.`);
-
-        setTimeout(() => {
-            forget(this.startDataStreamProcessor, this.dataStreamUrl);
-        }, (1000 * 10));
+        return this.healthState;
     }
 }
 

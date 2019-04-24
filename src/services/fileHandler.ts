@@ -14,8 +14,14 @@ import { exec } from 'child_process';
 import { writeFileSync } from 'jsonfile';
 import * as request from 'request';
 import * as _get from 'lodash.get';
-import { bind, forget, pjson } from '../utils';
-import { HealthStates } from './serverTypes';
+import { bind, pjson } from '../utils';
+import { HealthState } from './serverTypes';
+
+export const ProvisionStatus = {
+    Installing: 'Installing',
+    Pending: 'Pending',
+    Completed: 'Completed'
+};
 
 const defaultFileUploadFolder: string = 'storage';
 const defaultUnzipCommand: string = 'unzip -d ###UNZIPDIR ###TARGET';
@@ -59,6 +65,9 @@ export class FileHandlerService {
     public async init(): Promise<void> {
         this.logger.log(['FileHandler', 'info'], 'initialize');
 
+        this.server.method({ name: 'fileHandler.provisionDockerImage', method: this.provisionDockerImage });
+        this.server.method({ name: 'fileHandler.signalRestart', method: this.signalRestart });
+
         this.fileUploadFolder = this.config.get('fileUploadFolder') || defaultFileUploadFolder;
         this.unzipCommand = this.config.get('unzipCommand') || defaultUnzipCommand;
         this.storageFolderPath = pathJoin((this.server.settings.app as any).hostRootDirectory, this.fileUploadFolder);
@@ -68,20 +77,13 @@ export class FileHandlerService {
         this.dockerImageName = this.config.get('dockerImageName') || defaultDockerImageName;
 
         this.dockerImageVersion = _get(pjson(), 'version') || '0.0.0';
-
-        this.server.method({
-            name: 'fileHandler.provisionDockerImage',
-            method: this.provisionDockerImage
-        });
-        this.server.method({
-            name: 'fileHandler.signalRestart',
-            method: this.signalRestart
-        });
     }
 
     @bind
     public async provisionDockerImage(): Promise<void> {
         this.logger.log(['FileHandler', 'info'], `Provisioning docker imgage`);
+
+        await this.iotCentral.updateDeviceProperties({ [DeviceProperty.ImageProvisionStatus]: ProvisionStatus.Installing });
 
         const versionFilePath = pathResolve(this.storageFolderPath, 'image.ver');
 
@@ -105,12 +107,20 @@ export class FileHandlerService {
 
                         writeFileSync(versionFilePath, { version: this.dockerImageVersion });
 
+                        await this.iotCentral.updateDeviceProperties({
+                            [DeviceProperty.ImageVersion]: this.dockerImageVersion,
+                            [DeviceProperty.ImageProvisionStatus]: ProvisionStatus.Pending
+                        });
+
                         await this.signalRestart('provisionDockerImage-newImage');
                     }
                     else {
-                        forget(this.iotCentral.sendMeasurement, MessageType.Event, { [DeviceEvent.ImageProvisionComplete]: this.dockerImageVersion });
+                        await this.iotCentral.sendMeasurement(MessageType.Event, { [DeviceEvent.ImageProvisionComplete]: this.dockerImageVersion });
 
-                        forget(this.iotCentral.updateDeviceProperties, { [DeviceProperty.ImageVersion]: this.dockerImageVersion });
+                        await this.iotCentral.updateDeviceProperties({
+                            [DeviceProperty.ImageVersion]: this.dockerImageVersion,
+                            [DeviceProperty.ImageProvisionStatus]: ProvisionStatus.Completed
+                        });
                     }
                 }
             }
@@ -120,12 +130,20 @@ export class FileHandlerService {
 
                 writeFileSync(versionFilePath, { version: this.dockerImageVersion });
 
+                await this.iotCentral.updateDeviceProperties({
+                    [DeviceProperty.ImageVersion]: this.dockerImageVersion,
+                    [DeviceProperty.ImageProvisionStatus]: ProvisionStatus.Pending
+                });
+
                 await this.signalRestart('provisionDockerImage-noFile');
             }
         }
         catch (ex) {
             this.logger.log(['FileHandler', 'error'], `Error during docker image provisioning: ${ex.message}`);
         }
+
+        // NOTE: a path exists here where there is no file contents for the 'imge.ver' file - this shoudln't happen
+        // process.exit(1)
     }
 
     public async extractAndVerifyModelFiles(fileName: any): Promise<boolean> {
@@ -168,7 +186,7 @@ export class FileHandlerService {
         const destFilePath = `${this.storageFolderPath}/${destFileName}`;
 
         const contentType = _get(file, 'hapi.headers.content-type');
-        if (contentType !== 'application/zip') {
+        if (contentType !== 'application/zip' && contentType !== 'application/x-zip-compressed') {
             this.logger.log(['FileHandler', 'error'], `Expected application/zip type but got: ${contentType}`);
             return '';
         }
@@ -312,25 +330,33 @@ export class FileHandlerService {
         // wait here for 5 minues while we signal a reboot through crontab
         this.logger.log(['FileHandler', 'info'], `Signalling a restart - waiting 5 minutes...`);
 
-        // // distribute large numbers of device reprovisioning requests over a 60sec window
-        // this doesn't actually work because crontab is quantized to 1 minute intervals
-        // await sleep(1000 * Math.floor(Math.random() * Math.floor(60)));
+        try {
+            // // distribute large numbers of device reprovisioning requests over a 60sec window
+            // this doesn't actually work because crontab is quantized to 1 minute intervals
+            // await sleep(1000 * Math.floor(Math.random() * Math.floor(60)));
 
-        forget(this.iotCentral.sendMeasurement, MessageType.Event, { [DeviceEvent.DeviceRestart]: fromService });
+            await this.iotCentral.sendMeasurement(MessageType.Event, { [DeviceEvent.DeviceRestart]: fromService });
 
-        writeFileSync(pathResolve(this.storageFolderPath, 'reboot.now'), { version: this.dockerImageVersion });
+            writeFileSync(pathResolve(this.storageFolderPath, 'reboot.now'), { version: this.dockerImageVersion });
 
-        await new Promise((resolve) => {
-            setTimeout(() => {
-                resolve();
-            }, (1000 * 60 * 5));
-        });
+            await new Promise((resolve) => {
+                setTimeout(() => {
+                    resolve();
+                }, (1000 * 60 * 5));
+            });
 
-        this.logger.log(['FileHandler', 'info'], `Failed to reboot after waiting 5 minutes.`);
+            this.logger.log(['FileHandler', 'info'], `Failed to auto-restart after 5 minutes... Container will restart now.`);
+        }
+        catch (ex) {
+            this.logger.log(['FileHandler', 'error'], `Failed to auto-restart: ${ex.message}`);
+        }
+
+        // let Docker restart out container
+        process.exit(1);
     }
 
-    public getHealth(): number {
-        return HealthStates.Good;
+    public async getHealth(): Promise<number> {
+        return HealthState.Good;
     }
 
     private async removeDockerImages(): Promise<void> {
@@ -346,7 +372,7 @@ export class FileHandlerService {
                 const imageVersion = imageName.split(':')[1];
 
                 if (imageVersion < this.dockerImageVersion) {
-                    this.logger.log(['AgentService', 'info', 'removeJigsawContainer'], `Removing (-f) container id: ${imageId}`);
+                    this.logger.log(['FileHandler', 'info'], `Removing (-f) container id: ${imageId}`);
 
                     const options = {
                         method: 'DELETE',

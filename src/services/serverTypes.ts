@@ -15,8 +15,8 @@ export interface IFileUploadDetails {
     size: number;
 }
 
-export const HealthStates = {
-    Good: 3,
-    Warning: 2,
-    Critical: 1
+export const HealthState = {
+    Good: 1,
+    Warning: 0,
+    Critical: 0
 };
