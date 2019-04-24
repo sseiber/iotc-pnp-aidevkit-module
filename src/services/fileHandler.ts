@@ -83,7 +83,7 @@ export class FileHandlerService {
     public async provisionDockerImage(): Promise<void> {
         this.logger.log(['FileHandler', 'info'], `Provisioning docker imgage`);
 
-        await this.iotCentral.updateDeviceProperties({ [DeviceProperty.ImageProvisionStatus]:  ProvisionStatus.Installing});
+        await this.iotCentral.updateDeviceProperties({ [DeviceProperty.ImageProvisionStatus]: ProvisionStatus.Installing });
 
         const versionFilePath = pathResolve(this.storageFolderPath, 'image.ver');
 
@@ -107,16 +107,20 @@ export class FileHandlerService {
 
                         writeFileSync(versionFilePath, { version: this.dockerImageVersion });
 
-                        await this.iotCentral.updateDeviceProperties({ [DeviceProperty.ImageProvisionStatus]:  ProvisionStatus.Pending});
+                        await this.iotCentral.updateDeviceProperties({
+                            [DeviceProperty.ImageVersion]: this.dockerImageVersion,
+                            [DeviceProperty.ImageProvisionStatus]: ProvisionStatus.Pending
+                        });
 
                         await this.signalRestart('provisionDockerImage-newImage');
                     }
                     else {
                         await this.iotCentral.sendMeasurement(MessageType.Event, { [DeviceEvent.ImageProvisionComplete]: this.dockerImageVersion });
 
-                        await this.iotCentral.updateDeviceProperties({ [DeviceProperty.ImageVersion]: this.dockerImageVersion });
-
-                        await this.iotCentral.updateDeviceProperties({ [DeviceProperty.ImageProvisionStatus]:  ProvisionStatus.Completed});
+                        await this.iotCentral.updateDeviceProperties({
+                            [DeviceProperty.ImageVersion]: this.dockerImageVersion,
+                            [DeviceProperty.ImageProvisionStatus]: ProvisionStatus.Completed
+                        });
                     }
                 }
             }
@@ -126,7 +130,10 @@ export class FileHandlerService {
 
                 writeFileSync(versionFilePath, { version: this.dockerImageVersion });
 
-                await this.iotCentral.updateDeviceProperties({ [DeviceProperty.ImageProvisionStatus]:  ProvisionStatus.Pending});
+                await this.iotCentral.updateDeviceProperties({
+                    [DeviceProperty.ImageVersion]: this.dockerImageVersion,
+                    [DeviceProperty.ImageProvisionStatus]: ProvisionStatus.Pending
+                });
 
                 await this.signalRestart('provisionDockerImage-noFile');
             }
