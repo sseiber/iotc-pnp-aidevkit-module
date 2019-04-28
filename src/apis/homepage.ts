@@ -1,5 +1,5 @@
 import { RoutePlugin, route } from 'spryly';
-import { Request, ResponseToolkit } from 'hapi';
+import { Request, ResponseToolkit } from '@hapi/hapi';
 import {
     dirname as pathDirname,
     join as pathJoin,

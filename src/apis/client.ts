@@ -1,7 +1,7 @@
 import { inject, RoutePlugin, route } from 'spryly';
-import { Request, ResponseToolkit } from 'hapi';
+import { Request, ResponseToolkit } from '@hapi/hapi';
 import { CameraService } from '../services/camera';
-import * as Boom from 'boom';
+import * as Boom from '@hapi/boom';
 import * as _get from 'lodash.get';
 
 export class ClientRoutes extends RoutePlugin {
@@ -10,7 +10,7 @@ export class ClientRoutes extends RoutePlugin {
 
     @route({
         method: 'POST',
-        path: '/api/v1/client/login',
+        path: '/api/v1/client/session',
         options: {
             auth: {
                 strategies: ['client-jwt', 'client-localnetwork'],
@@ -23,9 +23,9 @@ export class ClientRoutes extends RoutePlugin {
         }
     })
     // @ts-ignore (request)
-    public async postLogin(request: Request, h: ResponseToolkit) {
+    public async postCreateSession(request: Request, h: ResponseToolkit) {
         try {
-            const result = await this.camera.login();
+            const result = await this.camera.createCameraSession();
 
             return h.response(result).code(201);
         }
@@ -35,8 +35,8 @@ export class ClientRoutes extends RoutePlugin {
     }
 
     @route({
-        method: 'POST',
-        path: '/api/v1/client/logout',
+        method: 'DELETE',
+        path: '/api/v1/client/session',
         options: {
             auth: {
                 strategies: ['client-jwt', 'client-localnetwork'],
@@ -49,9 +49,9 @@ export class ClientRoutes extends RoutePlugin {
         }
     })
     // @ts-ignore (request)
-    public async postLogout(request: Request, h: ResponseToolkit) {
+    public async postDestroySession(request: Request, h: ResponseToolkit) {
         try {
-            const result = await this.camera.logout();
+            const result = await this.camera.destroyCameraSession();
 
             return h.response(result).code(201);
         }

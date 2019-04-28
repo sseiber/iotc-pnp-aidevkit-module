@@ -1,6 +1,6 @@
 import { HapiPlugin } from 'spryly';
-import { Server } from 'hapi';
-import * as Nes from 'nes';
+import { Server } from '@hapi/hapi';
+import * as Nes from '@hapi/nes';
 
 export class InferenceProcessorPlugin implements HapiPlugin {
     public async register(server: Server) {

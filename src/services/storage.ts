@@ -1,6 +1,6 @@
 const ROOT = '__ROOT__';
 import { service, inject } from 'spryly';
-import { Server } from 'hapi';
+import { Server } from '@hapi/hapi';
 import { LoggingService } from './logging';
 import { promisify } from 'util';
 import * as fse from 'fs-extra';

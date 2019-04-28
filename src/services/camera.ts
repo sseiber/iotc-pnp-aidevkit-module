@@ -1,5 +1,5 @@
 import { service, inject } from 'spryly';
-import { Server } from 'hapi';
+import { Server } from '@hapi/hapi';
 import * as request from 'request';
 import { EventEmitter } from 'events';
 import * as _get from 'lodash.get';
@@ -30,7 +30,6 @@ export const defaultCameraSettings = {
 
 const defaultCameraUsername: string = 'admin';
 const defaultCameraPassword: string = 'admin';
-const defaultMaxLoginAttempts: number = 4;
 const defaultRtspVideoPort: string = '8900';
 const defaultIpcPort: string = '1080';
 const resolutions: string[] = [
@@ -86,7 +85,6 @@ export class CameraService extends EventEmitter {
 
     private cameraUserName: string = defaultCameraUsername;
     private cameraPassword: string = defaultCameraPassword;
-    private maxLoginAttempts: number = defaultMaxLoginAttempts;
     private rtspVideoPort: string = defaultRtspVideoPort;
     private ipAddresses: any = {
         cameraIpAddress: '127.0.0.1',
@@ -110,7 +108,6 @@ export class CameraService extends EventEmitter {
 
         this.cameraUserName = this.config.get('cameraUsername') || defaultCameraUsername;
         this.cameraPassword = this.config.get('cameraPassword') || defaultCameraPassword;
-        this.maxLoginAttempts = this.config.get('maxLoginAttemps') || defaultMaxLoginAttempts;
         this.rtspVideoPort = this.config.get('rtspVideoPort') || defaultRtspVideoPort;
         this.ipcPort = this.config.get('ipcPort') || defaultIpcPort;
 
@@ -121,22 +118,20 @@ export class CameraService extends EventEmitter {
 
     @bind
     public async startCamera(): Promise<void> {
-        await this.login();
+        await this.createCameraSession();
     }
 
-    public async login(): Promise<ICameraResult> {
+    public async createCameraSession(): Promise<ICameraResult> {
         let status = false;
 
         try {
             if (this.sessionToken) {
                 this.logger.log(['CameraService', 'info'], `Logging out of existing session (${this.sessionToken})`);
 
-                await this.logout();
+                await this.destroyCameraSession();
             }
 
             this.ipAddresses = await this.getWlanIp();
-
-            this.logger.log(['CameraService', 'info'], `Logging into new session`);
 
             status = await this.ipcLogin();
 
@@ -151,7 +146,7 @@ export class CameraService extends EventEmitter {
         if (status === false) {
             this.logger.log(['CameraService', 'error'], `Error during initialization, logging out`);
 
-            const result = await this.logout();
+            const result = await this.destroyCameraSession();
             return {
                 ...result,
                 status,
@@ -169,24 +164,25 @@ export class CameraService extends EventEmitter {
         }
     }
 
-    public async logout(): Promise<ICameraResult> {
+    public async destroyCameraSession(): Promise<ICameraResult> {
         let status = false;
 
         try {
             this.inferenceProcessor.stopInferenceProcessor();
 
             if (this.sessionToken) {
-                for (let iLogoutAttempts = 0; status === false && iLogoutAttempts < 3; ++iLogoutAttempts) {
-                    try {
-                        status = await this.ipcPostRequest('/logout', {});
-                        break;
-                    }
-                    catch (ex) {
-                        if (ex.code !== 'ESOCKETTIMEDOUT') {
-                            throw new Error(ex);
-                        }
-                    }
+                try {
+                    status = await this.ipcPostRequest('/logout', {});
                 }
+                catch (ex) {
+                    this.logger.log(['CameraService', 'error'], `logout failed: ${ex.message}`);
+                    status = false;
+                }
+
+                // if (status === false) {
+                //     this.logger.log(['CameraService', 'warning'], `logout failed - restarting Qmmf services`);
+                //     await (this.server.methods.fileHandler as any).restartQmmfServices(`CameraService:destroyCameraSession`);
+                // }
 
                 await this.iotCentral.sendMeasurement(MessageType.Event, { [DeviceEvent.SessionLogout]: this.sessionToken });
             }
@@ -261,13 +257,13 @@ export class CameraService extends EventEmitter {
         let status = false;
 
         try {
-            await this.logout();
+            await this.destroyCameraSession();
 
             this.currentCameraSettings = {
                 ...cameraSettings
             };
 
-            const result = await this.login();
+            const result = await this.createCameraSession();
             status = result.status;
         }
         catch (ex) {
@@ -355,7 +351,8 @@ export class CameraService extends EventEmitter {
                 + `iot:${iotCentralHealth} `
                 + `file:${fileHandlerHealth}`);
 
-            await (this.server.methods.fileHandler as any).signalRestart(`checkHealthState`);
+            await (this.server.methods.fileHandler as any).restartDevice('CameraService:checkHealthState');
+            // await (this.server.methods.fileHandler as any).restartQmmfServices('CameraService:checkHealthState');
 
             return HealthState.Critical;
         }
@@ -403,7 +400,7 @@ export class CameraService extends EventEmitter {
         let status = false;
 
         try {
-            await this.logout();
+            await this.destroyCameraSession();
 
             const fileName = fileInfo.type === 'multipart'
                 ? await this.fileHandler.saveMultiPartFormModelPackage(fileInfo.file)
@@ -430,7 +427,7 @@ export class CameraService extends EventEmitter {
             }
 
             if (status === true) {
-                const result = await this.login();
+                const result = await this.createCameraSession();
                 status = result.status;
             }
         }
@@ -634,45 +631,55 @@ export class CameraService extends EventEmitter {
                 }
             };
 
-            this.logger.log(['ipcProvider', 'info'], `LOGIN API: ${options.url}`);
+            this.logger.log(['ipcCameraInterface', 'info'], `LOGIN API: ${options.url}`);
 
+            let status = false;
             let result = {
                 body: {
                     status: false
                 }
             };
 
-            for (let iLoginAttempts = 0; !_get(result, 'body.status') && iLoginAttempts < this.maxLoginAttempts; ++iLoginAttempts) {
+            let retried = false;
+            while (true) {
                 try {
-                    if (iLoginAttempts > 0) {
-                        this.logger.log(['ipcProvider', 'warn'], `LOGIN ATTEMPT ${iLoginAttempts + 1} of ${this.maxLoginAttempts}: ${options.url}`);
-                    }
-
                     result = await this.makeRequest(options);
+
+                    status = _get(result, 'body.status');
+
+                    if (status === true) {
+                        break;
+                    }
                 }
                 catch (ex) {
-                    if (ex.code !== 'ETIMEDOUT') {
-                        throw new Error(ex);
-                    }
+                    this.logger.log(['ipcCameraInterface', 'error'], `Login failed with exception: ${ex.message}`);
+                    status = false;
                 }
+
+                if (retried) {
+                    break;
+                }
+
+                // await (this.server.methods.fileHandler as any).restartDevice(`ipcCameraInterface:ipcLogin`);
+                await (this.server.methods.fileHandler as any).restartQmmfServices(`ipcCameraInterface:ipcLogin`);
+                retried = true;
             }
 
-            const status = _get(result, 'body.status');
-            this.logger.log(['ipcProvider', 'info'], `RESPONSE BODY: ${status}`);
+            this.logger.log(['ipcCameraInterface', 'info'], `RESPONSE BODY: ${status}`);
 
             if (status === true) {
-                this.logger.log(['ipcProvider', 'info'], `RESPONSE COOKIE: ${_get(result, 'response.headers[set-cookie][0]')}`);
+                this.logger.log(['ipcCameraInterface', 'info'], `RESPONSE COOKIE: ${_get(result, 'response.headers[set-cookie][0]')}`);
 
                 this.sessionToken = _get(result, 'response.headers[set-cookie][0]');
             }
             else {
-                this.logger.log(['ipcProvider', 'info'], `Error durring logon`);
+                this.logger.log(['ipcCameraInterface', 'info'], `Error during logon`);
             }
 
             return status;
         }
         catch (ex) {
-            this.logger.log(['ipcProvider', 'error'], ex.message);
+            this.logger.log(['ipcCameraInterface', 'error'], ex.message);
 
             throw new Error(ex.message);
         }
@@ -685,7 +692,7 @@ export class CameraService extends EventEmitter {
             return result;
         }
         catch (ex) {
-            this.logger.log(['ipcProvider', 'error'], ex.message);
+            this.logger.log(['ipcCameraInterface', 'error'], ex.message);
 
             return {
                 status: false
@@ -700,7 +707,7 @@ export class CameraService extends EventEmitter {
             return result;
         }
         catch (ex) {
-            this.logger.log(['ipcProvider', 'error'], ex.message);
+            this.logger.log(['ipcCameraInterface', 'error'], ex.message);
 
             return false;
         }
@@ -728,20 +735,20 @@ export class CameraService extends EventEmitter {
                 });
             }
 
-            // this.logger.log(['ipcProvider', 'info'], `${method} API: ${options.url}`);
+            // this.logger.log(['ipcCameraInterface', 'info'], `${method} API: ${options.url}`);
 
             const result = await this.makeRequest(options);
 
             await sleep(250);
 
-            this.logger.log(['ipcProvider', 'info'], `RESPONSE: ${JSON.stringify(_get(result, 'body'))}`);
+            this.logger.log(['ipcCameraInterface', 'info'], `RESPONSE: ${JSON.stringify(_get(result, 'body'))}`);
 
             const bodyResult = (method === 'POST') ? _get(result, 'body.status') : _get(result, 'body');
 
             return bodyResult;
         }
         catch (ex) {
-            this.logger.log(['ipcProvider', 'error'], ex.message);
+            this.logger.log(['ipcCameraInterface', 'error'], ex.message);
 
             throw new Error(ex.message);
         }
@@ -754,12 +761,12 @@ export class CameraService extends EventEmitter {
                 ...options
             }, (requestError, response, body) => {
                 if (requestError) {
-                    this.logger.log(['ipcProvider', 'error'], `makeRequest: ${requestError.message}`);
+                    this.logger.log(['ipcCameraInterface', 'error'], `makeRequest: ${requestError.message}`);
                     return reject(requestError);
                 }
 
                 if (response.statusCode < 200 || response.statusCode > 299) {
-                    this.logger.log(['ipcProvider', 'error'], `Response status code = ${response.statusCode}`);
+                    this.logger.log(['ipcCameraInterface', 'error'], `Response status code = ${response.statusCode}`);
 
                     const errorMessage = body.message || body || 'An error occurred';
                     return reject(new Error(`Error statusCode: ${response.statusCode}, ${errorMessage}`));
@@ -798,12 +805,12 @@ export class CameraService extends EventEmitter {
             try {
                 const { stdout } = await promisify(exec)(ifConfigFilter, { encoding: 'utf8' });
 
-                this.logger.log(['ipcProvider', 'info'], `Determined IP address: ${stdout}`);
+                this.logger.log(['ipcCameraInterface', 'info'], `Determined IP address: ${stdout}`);
 
                 cameraIpAddress = (stdout || '127.0.0.1').trim();
             }
             catch (ex) {
-                this.logger.log(['ipcProvider', 'error'], `get ip stderr: ${ex.message}`);
+                this.logger.log(['ipcCameraInterface', 'error'], `get ip stderr: ${ex.message}`);
             }
         }
 

@@ -1,11 +1,12 @@
 import { Netmask } from 'netmask';
-import * as Boom from 'boom';
+import * as Boom from '@hapi/boom';
 import { networkInterfaces } from 'os';
 
 const internals: any = {};
 
 exports.plugin = {
     name: 'localnetwork',
+
     // @ts-ignore (options)
     register: (server, options) => {
         server.auth.scheme('localnetwork', internals.implementation);

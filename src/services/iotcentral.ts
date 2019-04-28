@@ -1,5 +1,5 @@
 import { service, inject } from 'spryly';
-import { Server } from 'hapi';
+import { Server } from '@hapi/hapi';
 import * as request from 'request';
 import * as _get from 'lodash.get';
 import * as crypto from 'crypto';
@@ -40,6 +40,7 @@ export const DeviceEvent = {
     VideoStreamProcessingError: 'event_videostream_processing_error',
     VideoModelChange: 'event_video_model_change',
     DeviceRestart: 'event_device_restart',
+    QmmfRestart: 'event_qmmf_restart',
     ImageProvisionComplete: 'event_image_provision_complete',
     Inference: 'event_inference'
 };
@@ -208,16 +209,8 @@ export class IoTCentralService {
                 json: true
             };
 
+            // check paolo
             let response = await this.iotcRequest(options);
-
-            const operationId = _get(response, 'operationId');
-
-            this.logger.log(['IoTCentralService', 'info'], `IoT Central dps request succeeded - waiting for hub assignment`);
-
-            delete options.body;
-            options.method = 'GET';
-            options.url = this.iotCentralDpsEndpoint.replace('###SCOPEID', this.iotCentralScopeId).replace('###DEVICEID', iotCentralState.deviceId)
-                + this.iotCentralDpsOperationsSuffix.replace('###OPERATION_ID', operationId).replace('###API_VERSION', this.iotCentralDpsAssigningApiVersion);
 
             const errorCode = _get(response, 'errorCode');
             if (errorCode) {
@@ -227,6 +220,15 @@ export class IoTCentralService {
             }
 
             if (result === true) {
+                const operationId = _get(response, 'operationId');
+
+                this.logger.log(['IoTCentralService', 'info'], `IoT Central dps request succeeded - waiting for hub assignment`);
+
+                delete options.body;
+                options.method = 'GET';
+                options.url = this.iotCentralDpsEndpoint.replace('###SCOPEID', this.iotCentralScopeId).replace('###DEVICEID', iotCentralState.deviceId)
+                    + this.iotCentralDpsOperationsSuffix.replace('###OPERATION_ID', operationId).replace('###API_VERSION', this.iotCentralDpsAssigningApiVersion);
+
                 while (_get(response, 'status') === 'assigning') {
                     await sleep(2500);
                     this.logger.log(['IoTCentralService', 'info'], `IoT Central dps request succeeded - waiting for hub assignment`);
@@ -234,7 +236,8 @@ export class IoTCentralService {
                     response = await this.iotcRequest(options);
                 }
 
-                if (_get(response, 'status') === 'assigned') {
+                const status = _get(response, 'status') || 'unknown';
+                if (status === 'assigned') {
                     const iotcHub = _get(response, 'registrationState.assignedHub');
 
                     this.logger.log(['IoTCentralService', 'info'], `IoT Central dps hub assignment: ${iotcHub}`);
@@ -243,10 +246,16 @@ export class IoTCentralService {
 
                     result = true;
                 }
+                else {
+                    const errorMessage = _get(response, 'registrationState.errorMessage') || '';
+                    this.logger.log(['IoTCentralService', 'info'], `IoT Central dps unexpected status: ${status}: ${errorMessage}`);
+
+                    result = false;
+                }
             }
 
             if (result === false) {
-                provisioningStatus = `IoT Central dps provisioning error code: ${errorCode}`;
+                provisioningStatus = `IoT Central dps provisioning failed`;
                 this.logger.log(['IoTCentralService', 'error'], provisioningStatus);
             }
         }
@@ -316,7 +325,7 @@ export class IoTCentralService {
             return;
         }
 
-        if (messageType === MessageType.Telemetry && ((Date.now() - this.iotcTelemetryThrottleTimer) < 1000 || !data || !this.iotcClientConnected)) {
+        if (messageType === MessageType.Telemetry && ((Date.now() - this.iotcTelemetryThrottleTimer) < 1000)) {
             return;
         }
 
@@ -452,8 +461,6 @@ export class IoTCentralService {
         if (fileUrl) {
             try {
                 await (this.server.methods.camera as any).switchVisionAiModel({ type: 'url', fileUrl });
-
-                // await (this.server.methods.fileHandler as any).signalRestart('iotcClientRestartCommand');
             }
             catch {
                 this.logger.log(['IoTCentralService', 'error'], `An exception occurred while trying to switch the vision ai model`);
@@ -472,7 +479,7 @@ export class IoTCentralService {
             }
         });
 
-        await (this.server.methods.fileHandler as any).signalRestart('iotcClientRestartCommand');
+        await (this.server.methods.fileHandler as any).restartDevice('IoTCentralService:iotcClientRestartCommand');
     }
 
     private async iotcRequest(options: any): Promise<any> {
