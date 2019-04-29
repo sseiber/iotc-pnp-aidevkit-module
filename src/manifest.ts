@@ -21,10 +21,10 @@ export function manifest(config?: any): ComposeManifest {
         plugins: [
             ...[
                 {
-                    plugin: 'inert'
+                    plugin: '@hapi/inert'
                 },
                 {
-                    plugin: 'good',
+                    plugin: '@hapi/good',
                     options: generateLoggingOptions(config)
                 }
             ],
@@ -51,7 +51,7 @@ function generateLoggingOptions(config: any) {
         reporters: {
             console: [
                 {
-                    module: 'good-squeeze',
+                    module: '@hapi/good-squeeze',
                     name: 'Squeeze',
                     args: [
                         {
@@ -63,7 +63,7 @@ function generateLoggingOptions(config: any) {
                     ]
                 },
                 {
-                    module: 'good-console',
+                    module: '@hapi/good-console',
                     args: [
                         {
                             format: '[[]hh:mm:ss [GMT]ZZ[]]',

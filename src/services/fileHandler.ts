@@ -1,5 +1,5 @@
 import { inject, service } from 'spryly';
-import { Server } from 'hapi';
+import { Server } from '@hapi/hapi';
 import { ConfigService } from './config';
 import { LoggingService } from './logging';
 import { IoTCentralService, DeviceEvent, DeviceProperty, MessageType } from '../services/iotcentral';
@@ -14,7 +14,8 @@ import { exec } from 'child_process';
 import { writeFileSync } from 'jsonfile';
 import * as request from 'request';
 import * as _get from 'lodash.get';
-import { bind, pjson } from '../utils';
+import * as compareVersions from 'compare-versions';
+import { bind, pjson, sleep } from '../utils';
 import { HealthState } from './serverTypes';
 
 export const ProvisionStatus = {
@@ -66,7 +67,8 @@ export class FileHandlerService {
         this.logger.log(['FileHandler', 'info'], 'initialize');
 
         this.server.method({ name: 'fileHandler.provisionDockerImage', method: this.provisionDockerImage });
-        this.server.method({ name: 'fileHandler.signalRestart', method: this.signalRestart });
+        this.server.method({ name: 'fileHandler.restartDevice', method: this.restartDevice });
+        this.server.method({ name: 'fileHandler.restartQmmfServices', method: this.restartQmmfServices });
 
         this.fileUploadFolder = this.config.get('fileUploadFolder') || defaultFileUploadFolder;
         this.unzipCommand = this.config.get('unzipCommand') || defaultUnzipCommand;
@@ -96,7 +98,7 @@ export class FileHandlerService {
 
                     this.logger.log(['FileHandler', 'info'], `Found existing version file: ${versionData.version}, new image is: ${this.dockerImageVersion}`);
 
-                    if (versionData.version < this.dockerImageVersion) {
+                    if (compareVersions(versionData.version, this.dockerImageVersion) < 0) {
                         this.logger.log(['FileHandler', 'info'], `Removing docker images < version ${this.dockerImageVersion}`);
 
                         await this.removeDockerImages();
@@ -112,7 +114,8 @@ export class FileHandlerService {
                             [DeviceProperty.ImageProvisionStatus]: ProvisionStatus.Pending
                         });
 
-                        await this.signalRestart('provisionDockerImage-newImage');
+                        await this.restartDevice('FileHandler:provisionDockerImage:newImage');
+                        // await this.restartQmmfServices('FileHandler:provisionDockerImage:newImage');
                     }
                     else {
                         await this.iotCentral.sendMeasurement(MessageType.Event, { [DeviceEvent.ImageProvisionComplete]: this.dockerImageVersion });
@@ -135,15 +138,13 @@ export class FileHandlerService {
                     [DeviceProperty.ImageProvisionStatus]: ProvisionStatus.Pending
                 });
 
-                await this.signalRestart('provisionDockerImage-noFile');
+                await this.restartDevice('FileHandler:provisionDockerImage:noFile');
+                // await this.restartQmmfServices('FileHandler:provisionDockerImage:noFile');
             }
         }
         catch (ex) {
             this.logger.log(['FileHandler', 'error'], `Error during docker image provisioning: ${ex.message}`);
         }
-
-        // NOTE: a path exists here where there is no file contents for the 'imge.ver' file - this shoudln't happen
-        // process.exit(1)
     }
 
     public async extractAndVerifyModelFiles(fileName: any): Promise<boolean> {
@@ -325,19 +326,45 @@ export class FileHandlerService {
         return dlcFile;
     }
 
+    public async getHealth(): Promise<number> {
+        return HealthState.Good;
+    }
+
     @bind
-    public async signalRestart(fromService: string): Promise<void> {
-        // wait here for 5 minues while we signal a reboot through crontab
+    private async restartQmmfServices(fromService: string): Promise<void> {
+        if (_get(process.env, 'LOCAL_DEBUG') === '1') {
+            return;
+        }
+
+        this.logger.log(['FileHandler', 'info'], `Restarting Qmmf services...`);
+
+        try {
+            await this.iotCentral.sendMeasurement(MessageType.Event, { [DeviceEvent.QmmfRestart]: fromService });
+
+            await promisify(exec)(`systemctl restart qmmf-webserver`);
+            await promisify(exec)(`systemctl restart ipc-webserver`);
+
+            await sleep(2000);
+        }
+        catch (ex) {
+            this.logger.log(['FileHandler', 'error'], `Failed to auto-restart qmmf services - will exit container now: ${ex.message}`);
+        }
+    }
+
+    @bind
+    private async restartDevice(fromService: string): Promise<void> {
+        if (_get(process.env, 'LOCAL_DEBUG') === '1') {
+            return;
+        }
+
+        // wait here for 5 minues while we signal a reboot
         this.logger.log(['FileHandler', 'info'], `Signalling a restart - waiting 5 minutes...`);
 
         try {
-            // // distribute large numbers of device reprovisioning requests over a 60sec window
-            // this doesn't actually work because crontab is quantized to 1 minute intervals
-            // await sleep(1000 * Math.floor(Math.random() * Math.floor(60)));
-
             await this.iotCentral.sendMeasurement(MessageType.Event, { [DeviceEvent.DeviceRestart]: fromService });
 
-            writeFileSync(pathResolve(this.storageFolderPath, 'reboot.now'), { version: this.dockerImageVersion });
+            // writeFileSync(pathResolve(this.storageFolderPath, 'reboot.now'), { version: this.dockerImageVersion });
+            await promisify(exec)(`reboot --reboot`);
 
             await new Promise((resolve) => {
                 setTimeout(() => {
@@ -348,15 +375,11 @@ export class FileHandlerService {
             this.logger.log(['FileHandler', 'info'], `Failed to auto-restart after 5 minutes... Container will restart now.`);
         }
         catch (ex) {
-            this.logger.log(['FileHandler', 'error'], `Failed to auto-restart: ${ex.message}`);
+            this.logger.log(['FileHandler', 'error'], `Failed to auto-restart device - will exit container now: ${ex.message}`);
         }
 
-        // let Docker restart out container
+        // let Docker restart our container
         process.exit(1);
-    }
-
-    public async getHealth(): Promise<number> {
-        return HealthState.Good;
     }
 
     private async removeDockerImages(): Promise<void> {

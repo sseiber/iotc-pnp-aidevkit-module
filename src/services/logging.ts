@@ -1,5 +1,5 @@
 import { service, inject } from 'spryly';
-import { Server } from 'hapi';
+import { Server } from '@hapi/hapi';
 
 @service('logger')
 export class LoggingService {

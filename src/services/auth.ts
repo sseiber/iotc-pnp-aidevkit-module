@@ -1,5 +1,5 @@
 import { service, inject } from 'spryly';
-import { Request, ResponseToolkit } from 'hapi';
+import { Request, ResponseToolkit } from '@hapi/hapi';
 import { LoggingService } from './logging';
 import { StorageService } from './storage';
 import { StateService } from './state';

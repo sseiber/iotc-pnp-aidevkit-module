@@ -1,5 +1,5 @@
 import { service, inject } from 'spryly';
-import { Server } from 'hapi';
+import { Server } from '@hapi/hapi';
 import { spawn } from 'child_process';
 import { LoggingService } from './logging';
 import { Transform } from 'stream';
