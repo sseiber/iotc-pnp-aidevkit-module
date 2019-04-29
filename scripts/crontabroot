@@ -1,1 +1,0 @@
-* * * * * if [ -e /data/misc/storage/reboot.now ]; then rm /data/misc/storage/reboot.now && reboot --reboot --force; fi>>/data/misc/storage/crontab.log

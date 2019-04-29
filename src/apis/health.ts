@@ -1,8 +1,8 @@
 import { inject, RoutePlugin, route } from 'spryly';
-import { Request, ResponseToolkit } from 'hapi';
+import { Request, ResponseToolkit } from '@hapi/hapi';
 import { CameraService } from '../services/camera';
 import { SubscriptionService } from '../services/subscription';
-import * as Boom from 'boom';
+import * as Boom from '@hapi/boom';
 
 export class HealthRoutes extends RoutePlugin {
     @inject('camera')

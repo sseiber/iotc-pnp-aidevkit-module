@@ -1,5 +1,5 @@
 import { service, inject } from 'spryly';
-import { Server } from 'hapi';
+import { Server } from '@hapi/hapi';
 import { LoggingService } from './logging';
 import { ConfigService } from './config';
 import { SubscriptionService } from '../services/subscription';
@@ -44,7 +44,7 @@ export class InferenceProcessorService {
 
         this.server.method({ name: 'inferenceProcessor.inferenceSettingChange', method: this.handleInferenceSettingChange });
         this.server.method({ name: 'inferenceProcessor.dataInference', method: this.handleDataInference });
-        this.server.method({ name: 'inferenceProcessor.videoFrame', method: this.handleDataInference });
+        this.server.method({ name: 'inferenceProcessor.videoFrame', method: this.handleVideoFrame });
 
         this.confidenceThreshold = Number(this.config.get('confidenceThreshold')) || defaultConfidenceThreshold;
     }
@@ -160,8 +160,11 @@ export class InferenceProcessorService {
             return className || 'Unkonwn';
         });
 
-        await this.iotCentral.sendMeasurement(MessageType.Telemetry, { [DeviceTelemetry.AllDetections]: inference.inferences.length });
-        await this.iotCentral.sendMeasurement(MessageType.Telemetry, { [DeviceTelemetry.Detections]: detectClassCount });
+        await this.iotCentral.sendMeasurement(MessageType.Telemetry, {
+            [DeviceTelemetry.AllDetections]: inference.inferences.length,
+            [DeviceTelemetry.Detections]: detectClassCount
+        });
+
         await this.iotCentral.sendMeasurement(MessageType.Event, { [DeviceEvent.Inference]: classes.join(', ') });
     }
 }

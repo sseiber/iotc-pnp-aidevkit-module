@@ -1,10 +1,10 @@
 import { HapiPlugin, inject } from 'spryly';
-import { Server } from 'hapi';
+import { Server } from '@hapi/hapi';
 import { LoggingService } from '../services/logging';
 import { ConfigService } from '../services/config';
 import { StateService } from '../services/state';
 import { ClientProxyService } from '../services/clientProxy';
-import { Client as NesClient } from 'nes';
+import { Client as NesClient } from '@hapi/nes';
 import * as _get from 'lodash.get';
 
 class DeferredPromise {
