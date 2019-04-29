@@ -334,6 +334,19 @@ export class CameraService extends EventEmitter {
         }
     }
 
+    public async resetDevice(resetAction: string): Promise<ICameraResult> {
+        const result = await this.destroyCameraSession();
+
+        if (resetAction === 'VAM') {
+            forget(this.server.methods.fileHandler.restartQmmfServices, 'CameraService:resetDevice');
+        }
+        else if (resetAction === 'DEVICE') {
+            forget(this.server.methods.fileHandler.restartDevice, 'CameraService:resetDevice');
+        }
+
+        return result;
+    }
+
     @bind
     public async checkHealthState(): Promise<number> {
         const inferenceProcessorHealth = await this.inferenceProcessor.getHealth();

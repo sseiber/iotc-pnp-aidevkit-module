@@ -209,7 +209,7 @@ export class IoTCentralService {
                 json: true
             };
 
-            // check paolo
+            // check with paolo
             let response = await this.iotcRequest(options);
 
             const errorCode = _get(response, 'errorCode');

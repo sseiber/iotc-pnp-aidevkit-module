@@ -153,4 +153,39 @@ export class ClientRoutes extends RoutePlugin {
             throw Boom.badRequest(ex.message);
         }
     }
+
+    @route({
+        method: 'POST',
+        path: '/api/v1/client/reset',
+        options: {
+            auth: {
+                strategies: ['client-jwt', 'client-localnetwork'],
+                access: {
+                    scope: ['api-client', 'admin']
+                }
+            },
+            tags: ['client'],
+            description: 'Reset the VAM engine or the device'
+        }
+    })
+    // @ts-ignore (request)
+    public async postResetDevice(request: Request, h: ResponseToolkit) {
+        try {
+            const resetAction = _get(request, 'payload.action');
+            if (resetAction !== 'VAM' && resetAction !== 'DEVICE') {
+                return {
+                    status: false,
+                    title: 'Camera',
+                    message: 'An error occurred trying to complete the request to reset the device.'
+                };
+            }
+
+            const result = await this.camera.resetDevice(resetAction);
+
+            return h.response(result).code(201);
+        }
+        catch (ex) {
+            throw Boom.badRequest(ex.message);
+        }
+    }
 }

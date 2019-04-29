@@ -332,6 +332,10 @@ export class FileHandlerService {
 
     @bind
     private async restartQmmfServices(fromService: string): Promise<void> {
+        if (_get(process.env, 'LOCAL_DEBUG') === '1') {
+            return;
+        }
+
         this.logger.log(['FileHandler', 'info'], `Restarting Qmmf services...`);
 
         try {
@@ -349,6 +353,10 @@ export class FileHandlerService {
 
     @bind
     private async restartDevice(fromService: string): Promise<void> {
+        if (_get(process.env, 'LOCAL_DEBUG') === '1') {
+            return;
+        }
+
         // wait here for 5 minues while we signal a reboot
         this.logger.log(['FileHandler', 'info'], `Signalling a restart - waiting 5 minutes...`);
 
