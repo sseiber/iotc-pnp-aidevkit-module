@@ -63,7 +63,6 @@ export class ClientProxyPlugin implements HapiPlugin {
             this.logger.log(['ClientProxyPlugin', 'info'], `Nes disconnect: ${nesLog.explanation}`);
         };
 
-        // tslint:disable-next-line:space-before-function-paren
         this.nesClient.onConnect = async () => {
             this.logger.log(['ClientProxyPlugin', 'info'], 'Nes connect: to Client remote host');
 
@@ -96,7 +95,6 @@ export class ClientProxyPlugin implements HapiPlugin {
             }
         };
 
-        // tslint:disable-next-line:space-before-function-paren
         this.nesClient.onUpdate = async (message) => {
             this.logger.log(['ClientProxyPlugin', 'info'], `Proxy Nes update - path: ${message.path}`);
 

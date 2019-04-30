@@ -5,7 +5,7 @@ import { ConfigService } from './config';
 import { SubscriptionService } from '../services/subscription';
 import { DataStreamController } from '../services/dataStreamProcessor';
 import { VideoStreamController } from '../services/videoStreamProcessor';
-import { IoTCentralService, DeviceEvent, MessageType, DeviceSetting, DeviceTelemetry } from '../services/iotcentral';
+import { IoTCentralService, DeviceEvent, DeviceSetting, DeviceTelemetry } from '../services/iotcentral';
 import { sleep, bind } from '../utils';
 import * as _get from 'lodash.get';
 
@@ -160,11 +160,14 @@ export class InferenceProcessorService {
             return className || 'Unkonwn';
         });
 
-        await this.iotCentral.sendMeasurement(MessageType.Telemetry, {
-            [DeviceTelemetry.AllDetections]: inference.inferences.length,
-            [DeviceTelemetry.Detections]: detectClassCount
-        });
-
-        await this.iotCentral.sendMeasurement(MessageType.Event, { [DeviceEvent.Inference]: classes.join(', ') });
+        await this.iotCentral.sendInferenceData(
+            {
+                [DeviceTelemetry.AllDetections]: inference.inferences.length,
+                [DeviceTelemetry.Detections]: detectClassCount
+            },
+            {
+                [DeviceEvent.Inference]: classes.join(', ')
+            }
+        );
     }
 }
