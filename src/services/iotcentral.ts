@@ -319,19 +319,34 @@ export class IoTCentralService {
         return result;
     }
 
-    @bind
-    public async sendMeasurement(messageType: string, data: any): Promise<void> {
-        if (!data || !this.iotcClientConnected) {
+    public async sendInferenceData(inferenceTelemetryData: any, inferenceEventData: any) {
+        if (!inferenceTelemetryData || !this.iotcClientConnected) {
             return;
         }
 
-        if (messageType === MessageType.Telemetry && ((Date.now() - this.iotcTelemetryThrottleTimer) < 1000)) {
+        if (((Date.now() - this.iotcTelemetryThrottleTimer) < 1000)) {
             return;
         }
 
         try {
             this.iotcTelemetryThrottleTimer = Date.now();
 
+            await this.sendMeasurement(MessageType.Telemetry, inferenceTelemetryData);
+
+            await this.sendMeasurement(MessageType.Event, inferenceEventData);
+        }
+        catch (ex) {
+            this.logger.log(['IoTCentralService', 'error'], `sendInferenceData: ${ex.message}`);
+        }
+    }
+
+    @bind
+    public async sendMeasurement(messageType: string, data: any): Promise<void> {
+        if (!data || !this.iotcClientConnected) {
+            return;
+        }
+
+        try {
             const iotcMessage = new AzureIotDevice.Message(JSON.stringify(data));
 
             await this.iotcClient.sendEvent(iotcMessage);
