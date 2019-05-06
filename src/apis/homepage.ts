@@ -46,7 +46,7 @@ export class HomePageRoutes extends RoutePlugin {
             tags: ['homepage'],
             description: 'The homepage favicon',
             handler: {
-                file: pathJoin(rootDirectory, 'static', 'favicon.ico')
+                file: pathJoin(rootDirectory, 'favicons', 'favicon.ico')
             }
         }
     })
@@ -63,7 +63,7 @@ export class HomePageRoutes extends RoutePlugin {
             description: 'The homepage static assets',
             handler: {
                 directory: {
-                    path: pathJoin(rootDirectory, 'static'),
+                    path: pathJoin(rootDirectory, 'favicons'),
                     index: false
                 }
             }

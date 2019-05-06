@@ -134,6 +134,12 @@ export class CameraService extends EventEmitter {
             this.ipAddresses = await this.getWlanIp();
 
             status = await this.ipcLogin();
+            if (status === false) {
+                // await (this.server.methods.fileHandler as any).restartDevice(`ipcCameraInterface:ipcLogin`);
+                await (this.server.methods.fileHandler as any).restartQmmfServices(`ipcCameraInterface:ipcLogin`);
+
+                status = await this.ipcLogin();
+            }
 
             if (status === true) {
                 status = await this.initializeCamera(this.currentCameraSettings);
@@ -179,10 +185,10 @@ export class CameraService extends EventEmitter {
                     status = false;
                 }
 
-                // if (status === false) {
-                //     this.logger.log(['CameraService', 'warning'], `logout failed - restarting Qmmf services`);
-                //     await (this.server.methods.fileHandler as any).restartQmmfServices(`CameraService:destroyCameraSession`);
-                // }
+                if (status === false) {
+                    this.logger.log(['CameraService', 'warning'], `Restarting Qmmf services`);
+                    await (this.server.methods.fileHandler as any).restartQmmfServices(`CameraService:destroyCameraSession`);
+                }
 
                 await this.iotCentral.sendMeasurement(MessageType.Event, { [DeviceEvent.SessionLogout]: this.sessionToken });
             }
@@ -633,6 +639,8 @@ export class CameraService extends EventEmitter {
     }
 
     private async ipcLogin(): Promise<boolean> {
+        let status = false;
+
         try {
             const options = {
                 method: 'POST',
@@ -646,36 +654,20 @@ export class CameraService extends EventEmitter {
 
             this.logger.log(['ipcCameraInterface', 'info'], `LOGIN API: ${options.url}`);
 
-            let status = false;
             let result = {
                 body: {
                     status: false
                 }
             };
 
-            let retried = false;
-            while (true) {
-                try {
-                    result = await this.makeRequest(options);
+            try {
+                result = await this.makeRequest(options);
 
-                    status = _get(result, 'body.status');
-
-                    if (status === true) {
-                        break;
-                    }
-                }
-                catch (ex) {
-                    this.logger.log(['ipcCameraInterface', 'error'], `Login failed with exception: ${ex.message}`);
-                    status = false;
-                }
-
-                if (retried) {
-                    break;
-                }
-
-                // await (this.server.methods.fileHandler as any).restartDevice(`ipcCameraInterface:ipcLogin`);
-                await (this.server.methods.fileHandler as any).restartQmmfServices(`ipcCameraInterface:ipcLogin`);
-                retried = true;
+                status = _get(result, 'body.status');
+            }
+            catch (ex) {
+                this.logger.log(['ipcCameraInterface', 'error'], `Login failed with exception: ${ex.message}`);
+                status = false;
             }
 
             this.logger.log(['ipcCameraInterface', 'info'], `RESPONSE BODY: ${status}`);
@@ -688,14 +680,13 @@ export class CameraService extends EventEmitter {
             else {
                 this.logger.log(['ipcCameraInterface', 'info'], `Error during logon`);
             }
-
-            return status;
         }
         catch (ex) {
             this.logger.log(['ipcCameraInterface', 'error'], ex.message);
-
-            throw new Error(ex.message);
+            status = false;
         }
+
+        return status;
     }
 
     private async ipcGetRequest(path: string, params?: string): Promise<any> {
@@ -797,6 +788,8 @@ export class CameraService extends EventEmitter {
         let cameraIpAddress = this.config.get('cameraIpAddress');
 
         if (!cameraIpAddress) {
+            cameraIpAddress = '127.0.0.1';
+
             // const ifConfigFilter = `ip addr show wlan0 | grep 'inet ' | awk '{print $2}' | cut -f1 -d'/'`;
             let ifConfigFilter;
 
@@ -812,6 +805,7 @@ export class CameraService extends EventEmitter {
                 case 'linux':
                 default:
                     ifConfigFilter = `ifconfig wlan0 | grep 'inet ' | cut -d: -f2 | awk '{print $1}'`;
+                    // ifConfigFilter = `printf "%d.%d.%d.%d" $(awk '$2 == 00000000 && $7 == 00000000 { for (i = 8; i >= 2; i=i-2) { print "0x" substr($3, i-1, 2) } }' /proc/net/route)`;
                     break;
             }
 
