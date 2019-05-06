@@ -6,7 +6,7 @@ import * as crypto from 'crypto';
 import { LoggingService } from './logging';
 import { ConfigService } from './config';
 import { StateService } from './state';
-import { sleep, bind, forget } from '../utils';
+import { sleep, bind } from '../utils';
 import { HealthState } from './serverTypes';
 import * as AzureIotDeviceMqtt from 'azure-iot-device-mqtt';
 import * as AzureIotDevice from 'azure-iot-device';
@@ -21,7 +21,8 @@ export const MessageType = {
 export const DeviceTelemetry = {
     CameraSystemHeartbeat: 'telemetry_camera_system_heartbeat',
     Detections: 'telemetry_detection_count',
-    AllDetections: 'telemetry_all_detections_count'
+    AllDetections: 'telemetry_all_detections_count',
+    BatteryLevel: 'telemetry_battery_level'
 };
 
 export const DeviceState = {
@@ -61,8 +62,10 @@ export const DeviceProperty = {
     Fps: 'prop_fps',
     Resolution: 'prop_resolution',
     ImageVersion: 'prop_image_version',
-    ImageProvisionStatus: 'prop_image_provision_status',
-    VideoModelName: 'prop_video_model_name'
+    ImageStatus: 'prop_image_provision_status',
+    VideoModelName: 'prop_video_model_name',
+    FirmwareVersion: 'prop_firmware_version',
+    BatteryLevel: 'prop_battery_level'
 };
 
 export const DeviceCommand = {
@@ -167,7 +170,7 @@ export class IoTCentralService {
     }
 
     public async iotCentralDpsProvisionDevice(): Promise<boolean> {
-        if (!this.config.get('enableIoTCentralProvisioning')) {
+        if (this.config.get('enableIoTCentralProvisioning') !== '1') {
             return false;
         }
 
@@ -446,7 +449,7 @@ export class IoTCentralService {
     private onIotcClientError(error: Error) {
         this.logger.log(['IoTCentralService', 'error'], `Client connection error: ${error.message}`);
 
-        forget(this.updateDeviceProperties, { [DeviceProperty.IoTCentralConnectionStatus]: error.message });
+        // forget(this.updateDeviceProperties, { [DeviceProperty.IoTCentralConnectionStatus]: error.message });
     }
 
     @bind

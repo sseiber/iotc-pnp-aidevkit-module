@@ -2,7 +2,7 @@ import { inject, service } from 'spryly';
 import { Server } from '@hapi/hapi';
 import { ConfigService } from './config';
 import { LoggingService } from './logging';
-import { IoTCentralService, DeviceEvent, DeviceProperty, MessageType } from '../services/iotcentral';
+import { IoTCentralService, DeviceTelemetry, DeviceEvent, DeviceProperty, MessageType } from '../services/iotcentral';
 import {
     join as pathJoin,
     resolve as pathResolve,
@@ -21,13 +21,17 @@ import { HealthState } from './serverTypes';
 export const ProvisionStatus = {
     Installing: 'Installing',
     Pending: 'Pending',
-    Completed: 'Completed'
+    Completed: 'Completed',
+    Restarting: 'Restarting'
 };
 
+const defaultEdgeDeployment: string = '0';
 const defaultFileUploadFolder: string = 'storage';
 const defaultUnzipCommand: string = 'unzip -d ###UNZIPDIR ###TARGET';
 const defaultModelFolderPath: string = '/data/misc/camera';
 const defaultStorageFolderPath: string = '/data/misc/storage';
+const defaultFirmwareVersionPath: string = '/etc/version';
+const defaultBatteryLevelPath: string = '/sys/class/power_supply/battery/capacity';
 const defaultDockerApiVersion: string = '1.37';
 const defaultDockerSocket: string = '/var/run/docker.sock';
 const defaultDockerImageName: string = 'peabody-local-service';
@@ -46,18 +50,17 @@ export class FileHandlerService {
     @inject('iotCentral')
     private iotCentral: IoTCentralService;
 
+    private edgeDeployment: string = defaultEdgeDeployment;
     private fileUploadFolder: string = defaultFileUploadFolder;
     private unzipCommand: string = defaultUnzipCommand;
     private modelFolderPath: string = defaultModelFolderPath;
     private storageFolderPath: string = defaultStorageFolderPath;
+    private firmwareVersionPath: string = defaultFirmwareVersionPath;
+    private batteryLevelPath: string = defaultBatteryLevelPath;
     private dockerApiVersion: string = defaultDockerApiVersion;
     private dockerSocket: string = defaultDockerSocket;
     private dockerImageName: string = defaultDockerImageName;
     private dockerImageVersion: string = '0.0.0';
-
-    public get currentStorageFolderPath() {
-        return this.storageFolderPath;
-    }
 
     public get currentModelFolderPath() {
         return this.modelFolderPath;
@@ -70,6 +73,7 @@ export class FileHandlerService {
         this.server.method({ name: 'fileHandler.restartDevice', method: this.restartDevice });
         this.server.method({ name: 'fileHandler.restartQmmfServices', method: this.restartQmmfServices });
 
+        this.edgeDeployment = this.config.get('IOTEDGE_DEVICEID') || defaultEdgeDeployment;
         this.fileUploadFolder = this.config.get('fileUploadFolder') || defaultFileUploadFolder;
         this.unzipCommand = this.config.get('unzipCommand') || defaultUnzipCommand;
         this.storageFolderPath = pathJoin((this.server.settings.app as any).hostRootDirectory, this.fileUploadFolder);
@@ -85,61 +89,66 @@ export class FileHandlerService {
     public async provisionDockerImage(): Promise<void> {
         this.logger.log(['FileHandler', 'info'], `Provisioning docker imgage`);
 
-        await this.iotCentral.updateDeviceProperties({ [DeviceProperty.ImageProvisionStatus]: ProvisionStatus.Installing });
+        await this.iotCentral.updateDeviceProperties({ [DeviceProperty.ImageStatus]: ProvisionStatus.Installing });
 
-        const versionFilePath = pathResolve(this.storageFolderPath, 'image.ver');
+        const imageVersionFilePath = pathResolve(this.storageFolderPath, 'image.ver');
 
         try {
-            const exists = await fse.exists(versionFilePath);
-            if (exists) {
-                const contents = fse.readFileSync(versionFilePath);
-                if (contents) {
-                    const versionData = JSON.parse(contents);
+            const firmwareProperties = await this.getFirmwareProperties();
+            const versionData = await this.getContainerImageVersion();
 
-                    this.logger.log(['FileHandler', 'info'], `Found existing version file: ${versionData.version}, new image is: ${this.dockerImageVersion}`);
+            if (this.edgeDeployment !== defaultEdgeDeployment && _get(versionData, 'version') !== 'Unknown') {
+                this.logger.log(['FileHandler', 'info'], `Found existing version file: ${versionData.version}, new image is: ${this.dockerImageVersion}`);
 
-                    if (compareVersions(versionData.version, this.dockerImageVersion) < 0) {
-                        this.logger.log(['FileHandler', 'info'], `Removing docker images < version ${this.dockerImageVersion}`);
+                if (compareVersions(versionData.version, this.dockerImageVersion) < 0) {
+                    this.logger.log(['FileHandler', 'info'], `Removing docker images < version ${this.dockerImageVersion}`);
 
-                        await this.removeDockerImages();
+                    await this.removeDockerImages();
 
-                        fse.unlinkSync(versionFilePath);
+                    fse.unlinkSync(imageVersionFilePath);
 
-                        this.logger.log(['FileHandler', 'info'], `Writing new version file: ${this.dockerImageVersion}`);
+                    this.logger.log(['FileHandler', 'info'], `Writing new version file: ${this.dockerImageVersion}`);
 
-                        writeFileSync(versionFilePath, { version: this.dockerImageVersion });
+                    writeFileSync(imageVersionFilePath, { version: this.dockerImageVersion });
 
-                        await this.iotCentral.updateDeviceProperties({
-                            [DeviceProperty.ImageVersion]: this.dockerImageVersion,
-                            [DeviceProperty.ImageProvisionStatus]: ProvisionStatus.Pending
-                        });
+                    await this.iotCentral.updateDeviceProperties({
+                        [DeviceProperty.ImageVersion]: this.dockerImageVersion,
+                        [DeviceProperty.ImageStatus]: ProvisionStatus.Pending,
+                        [DeviceProperty.FirmwareVersion]: firmwareProperties.firmwareVersion,
+                        [DeviceProperty.BatteryLevel]: firmwareProperties.batteryLevel
+                    });
 
-                        await this.restartDevice('FileHandler:provisionDockerImage:newImage');
-                        // await this.restartQmmfServices('FileHandler:provisionDockerImage:newImage');
-                    }
-                    else {
-                        await this.iotCentral.sendMeasurement(MessageType.Event, { [DeviceEvent.ImageProvisionComplete]: this.dockerImageVersion });
+                    await this.restartDevice('FileHandler:provisionDockerImage:newImage');
+                    // await this.restartQmmfServices('FileHandler:provisionDockerImage:newImage');
+                }
+                else {
+                    await this.iotCentral.sendMeasurement(MessageType.Event, { [DeviceEvent.ImageProvisionComplete]: this.dockerImageVersion });
 
-                        await this.iotCentral.updateDeviceProperties({
-                            [DeviceProperty.ImageVersion]: this.dockerImageVersion,
-                            [DeviceProperty.ImageProvisionStatus]: ProvisionStatus.Completed
-                        });
-                    }
+                    await this.iotCentral.updateDeviceProperties({
+                        [DeviceProperty.ImageVersion]: this.dockerImageVersion,
+                        [DeviceProperty.ImageStatus]: ProvisionStatus.Completed,
+                        [DeviceProperty.FirmwareVersion]: firmwareProperties.firmwareVersion,
+                        [DeviceProperty.BatteryLevel]: firmwareProperties.batteryLevel
+                    });
                 }
             }
             else {
                 this.logger.log(['FileHandler', 'info'], `No previous version file found`);
                 this.logger.log(['FileHandler', 'info'], `Writing new version file: ${this.dockerImageVersion}`);
 
-                writeFileSync(versionFilePath, { version: this.dockerImageVersion });
+                writeFileSync(imageVersionFilePath, { version: this.dockerImageVersion });
 
                 await this.iotCentral.updateDeviceProperties({
                     [DeviceProperty.ImageVersion]: this.dockerImageVersion,
-                    [DeviceProperty.ImageProvisionStatus]: ProvisionStatus.Pending
+                    [DeviceProperty.ImageStatus]: ProvisionStatus.Pending,
+                    [DeviceProperty.FirmwareVersion]: firmwareProperties.firmwareVersion,
+                    [DeviceProperty.BatteryLevel]: firmwareProperties.batteryLevel
                 });
 
-                await this.restartDevice('FileHandler:provisionDockerImage:noFile');
-                // await this.restartQmmfServices('FileHandler:provisionDockerImage:noFile');
+                if (this.edgeDeployment !== defaultEdgeDeployment) {
+                    await this.restartDevice('FileHandler:provisionDockerImage:noFile');
+                    // await this.restartQmmfServices('FileHandler:provisionDockerImage:noFile');
+                }
             }
         }
         catch (ex) {
@@ -327,7 +336,62 @@ export class FileHandlerService {
     }
 
     public async getHealth(): Promise<number> {
+        const firmwareProperties = await this.getFirmwareProperties();
+
+        await this.iotCentral.sendMeasurement(MessageType.Telemetry, { [DeviceTelemetry.BatteryLevel]: firmwareProperties.batteryLevel });
+        await this.iotCentral.updateDeviceProperties({ [DeviceProperty.BatteryLevel]: firmwareProperties.batteryLevel });
+
         return HealthState.Good;
+    }
+
+    private async getFirmwareProperties(): Promise<any> {
+        const result = {
+            firmwareVersion: 'Unknown',
+            batteryLevel: 'Unknown'
+        };
+
+        try {
+            const { stdout } = await promisify(exec)(`cat ${this.firmwareVersionPath}`);
+            if (stdout) {
+                result.firmwareVersion = (stdout || '').trim();
+            }
+        }
+        catch (ex) {
+            this.logger.log(['FileHandler', 'error'], `Error retrieving firmware version: ${ex.message}`);
+        }
+
+        try {
+            const { stdout } = await promisify(exec)(`cat ${this.batteryLevelPath}`);
+            if (stdout) {
+                result.batteryLevel = (stdout || '').trim();
+            }
+        }
+        catch (ex) {
+            this.logger.log(['FileHandler', 'error'], `Error retrieving device battery level: ${ex.message}`);
+        }
+
+        return result;
+    }
+
+    private async getContainerImageVersion(): Promise<any> {
+        let result = { version: 'Unknown' };
+
+        try {
+            const imageVersionFilePath = pathResolve(this.storageFolderPath, 'image.ver');
+
+            const exists = await fse.exists(imageVersionFilePath);
+            if (exists) {
+                const contents = fse.readFileSync(imageVersionFilePath);
+                if (contents) {
+                    result = JSON.parse(contents);
+                }
+            }
+        }
+        catch (ex) {
+            this.logger.log(['FileHandler', 'error'], `Error looking for firmware version file: ${ex.message}`);
+        }
+
+        return result;
     }
 
     @bind
@@ -362,8 +426,8 @@ export class FileHandlerService {
 
         try {
             await this.iotCentral.sendMeasurement(MessageType.Event, { [DeviceEvent.DeviceRestart]: fromService });
+            await this.iotCentral.updateDeviceProperties({ [DeviceProperty.ImageStatus]: ProvisionStatus.Restarting });
 
-            // writeFileSync(pathResolve(this.storageFolderPath, 'reboot.now'), { version: this.dockerImageVersion });
             await promisify(exec)(`reboot --reboot`);
 
             await new Promise((resolve) => {

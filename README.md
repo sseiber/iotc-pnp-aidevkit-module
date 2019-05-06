@@ -1,19 +1,52 @@
 # AI Dev Kit local service
-This project is the *local service* compontent of a web client interface for the AI Vision Dev Kit. See the companion *[peabody-local-client](https://github.com/sseiber/peabody-local-client)* project for the web client source code.
+This project is an example container service for the AI Dev Kit device.
 
-This component is a REST micro-service that runs locally on device. It interfaces with the Snapdragon SNPE IPCProvider on the backend and serves up a React web client for the user experience on the frontend.
+This project is hybrid of a container sample with features to enable the AI Dev Kit camera device as well as a REST api service to enable the features of a React Web client that the user can access from the device running on a local network. The companion React web client project can be found here *[peabody-local-client](https://github.com/sseiber/peabody-local-client)*.
+
+In addition this project includes an implementation of how a device provisions itself with Azure IoT Central and also includes a full implementation of how a device participates with the Azure IoT Central platform includeing telementry, state, events, and settings, properites, and custom commands. See the full documentation overview of Azure IoT Central here: [Azure IoT Central Documentation](https://docs.microsoft.com/en-us/azure/iot-central/).
 
 The project includes a Dockerfile and scripts used to build the docker container.
 
 ## Dependencies
-  * Visual Studio Code (not exactly but you should really be using this excellent IDE)
-  * NodeJS 10x (with NPM)
-  * GStreamer (if you want to test locally without deploying to the camera - recommended)
+  * [Visual Studio Code](https://code.visualstudio.com/download)
+    * Not exactly but you should really be using this excellent IDE
+  * [NodeJS 10x (with NPM)](https://nodejs.org/en/download/)
+    * This is the official link but it's probably easier to get it from your package manager like Brew, Chocolatey, etc.
+  * [Android Device Bridge tools (ADB)](https://developer.android.com/studio/command-line/adb)
+    * This is the Android Device Bridge tool. It lets you physicaly connect to the device over a USB cable to manage, copy files, debug, etc. If you are familiar with Android mobile development you know about this tool. The AI Dev Kit hardware architecture has some roots in Android and Qualcomm which is related to the use of this tool for the development cycle. You can install this tool separately or if you already installed Android Studio for Android mobile development you already have this tool.
+  * Get a [AI Dev Kit camera device](https://azure.github.io/Vision-AI-DevKit-Pages/)
+    * Follow the instructions to set it up via the WiFi Out-Of-Box-Experience and connect it to Azure IoT Edge
+    * While you are setting up the device, note the ip address of your device on the local network. Using your adb tool from the command line run:  
+      ```
+      adb shell ifconfig wlan0
+      ```
 
-## Environment installation
-  * Clone this repository
-  * `npm i`
-  * Open VSCode on this folder
+## There are 3 ways to run this device:
+1. ### Local developent cycle
+1. ### Run the container manually and experiment
+1. ### Develop your own container and manage the deployment with Azure IoT Edge)
+
+### 1. Local development cycle
+
+#### &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Environment installation
+  * Clone [the companion React Web client repository](https://github.com/sseiber/peabody-local-client)
+    * `npm i`
+    * `npm start`
+  * Clone [this repository](https://github.com/sseiber/peabody-local-service)
+    * `npm i`
+    * Open VSCode on this folder
+    * Create a folder under the project root called `configs`
+      * Create a file in the `./configs` folder called `local.json`
+      * In the `local.json` file include the following info (using your own camera's IP address):  
+        ```
+        {
+            "cameraIpAddress": "192.168.83.22",
+            "hostIpAddress": "localhost"
+        }
+        ```
+      * This will tell the code that where it should find the camera on your local network. Make sure your computer and the camera are on the same network.
+    * Create a folder named `peabody/camera`
+    * Press F5 (to start and debug)
 
 ## Prepare for debugging with VSCode
 ### Since the AI Vision Dev Kit interface is REST we can run the web client/server experience locally on a development machine and still control the camera. This is a better developent cycle than building a Docker container and deploying over and over. In order to do what we have to make sure the local environment is configured properly.

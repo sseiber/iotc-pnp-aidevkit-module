@@ -788,6 +788,8 @@ export class CameraService extends EventEmitter {
         let cameraIpAddress = this.config.get('cameraIpAddress');
 
         if (!cameraIpAddress) {
+            cameraIpAddress = '127.0.0.1';
+
             // const ifConfigFilter = `ip addr show wlan0 | grep 'inet ' | awk '{print $2}' | cut -f1 -d'/'`;
             let ifConfigFilter;
 
@@ -803,6 +805,7 @@ export class CameraService extends EventEmitter {
                 case 'linux':
                 default:
                     ifConfigFilter = `ifconfig wlan0 | grep 'inet ' | cut -d: -f2 | awk '{print $1}'`;
+                    // ifConfigFilter = `printf "%d.%d.%d.%d" $(awk '$2 == 00000000 && $7 == 00000000 { for (i = 8; i >= 2; i=i-2) { print "0x" substr($3, i-1, 2) } }' /proc/net/route)`;
                     break;
             }
 
