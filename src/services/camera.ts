@@ -804,8 +804,14 @@ export class CameraService extends EventEmitter {
 
                 case 'linux':
                 default:
-                    ifConfigFilter = `ifconfig wlan0 | grep 'inet ' | cut -d: -f2 | awk '{print $1}'`;
+                    // Docker base image opencvnode-base-arm32v7
+                    // ifConfigFilter = `ifconfig wlan0 | grep 'inet ' | cut -d: -f2 | awk '{print $1}'`;
+
+                    // Docker base image opencvnode-base-arm32v7 - get Docker internal bridge gateway address
                     // ifConfigFilter = `printf "%d.%d.%d.%d" $(awk '$2 == 00000000 && $7 == 00000000 { for (i = 8; i >= 2; i=i-2) { print "0x" substr($3, i-1, 2) } }' /proc/net/route)`;
+
+                    // Docker base image arm32v7/node:10-slim
+                    ifConfigFilter = `ifconfig wlan0 | grep 'inet ' | awk '{print $2}'`;
                     break;
             }
 
