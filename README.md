@@ -70,7 +70,7 @@ The project includes a Dockerfile and scripts used to build the docker container
     * Press F5 (to start with the debugger)
     * You should see output that looks like this:
 
-        <img src="./assets/inferences.png" width="640">
+        <img src="./assets/inferences.png" width="800">
 
 ## Build a Docker container and run in manually
   [This section is under development]
