@@ -11,7 +11,7 @@ export function manifest(config?: any): ComposeManifest {
             app: {
                 usePortal: config.usePortal,
                 rootDirectory: pathResolve(__dirname, '..'),
-                hostRootDirectory: process.env.HOST_ROOT || '/data/misc',
+                dataMiscRootDirectory: process.env.DATAMISC_ROOT || '/data/misc',
                 slogan: 'AI Dev Kit local service'
             }
         },

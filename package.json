@@ -13,7 +13,8 @@
     "docker_build": "node ./scripts/docker_build.js --docker-build",
     "preversion": "npm test",
     "version": "node ./scripts/docker_build.js --docker-build",
-    "postversion": "node ./scripts/docker_build.js --docker-push"
+    "postversion": "node ./scripts/docker_build.js --docker-push",
+    "postinstall": "node ./scripts/setupDevEnvironment.js"
   },
   "author": "sseiber",
   "license": "MIT",

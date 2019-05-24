@@ -23,7 +23,7 @@ export class StorageService {
     public async init() {
         this.logger.log(['StorageService', 'info'], 'initialize');
 
-        this.storageDirectory = pathJoin((this.server.settings.app as any).hostRootDirectory, 'storage');
+        this.storageDirectory = pathJoin((this.server.settings.app as any).dataMiscRootDirectory, 'storage');
 
         await this.setup();
     }
