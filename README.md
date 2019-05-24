@@ -68,13 +68,18 @@ The project includes a Dockerfile and scripts used to build the docker container
         va-snpe-engine-library_config.json
         ```
     * Press F5 (to start with the debugger)
-    * You should see:
-        ![alt text](https://raw.githubusercontent.com/username/projectname/branch/path/to/img.png)
-    * Run the following command to start the Docker image  
-        ```
-        docker run -it --network=host -v /data/misc:/data/misc iotccrscotts.azurecr.io/peabody-local-service:<latest-version> node ./dist/index.js
-        ```
-## To deploy from IoT Edge
+    * You should see output that looks like this:
+
+        <img src="./assets/inferences.png" width="640">
+
+## Build a Docker container and run in manually
+  [This section is under development]
+  * Run the following command to start the Docker image  
+    ```
+    docker run -it --network=host -v /data/misc:/data/misc iotccrscotts.azurecr.io/peabody-local-service:<latest-version> node ./dist/index.js
+    ```
+## Publish your Docker container and deploy it from IoT Edge
+  [This section is under development]
   * From the Azure Port configure your IoT Edge module with the following configuration  
     * Name:  
     `peabody-camera (Use your own unique name here)`
