@@ -76,8 +76,8 @@ export class FileHandlerService {
         this.edgeDeployment = this.config.get('IOTEDGE_DEVICEID') || defaultEdgeDeployment;
         this.fileUploadFolder = this.config.get('fileUploadFolder') || defaultFileUploadFolder;
         this.unzipCommand = this.config.get('unzipCommand') || defaultUnzipCommand;
-        this.storageFolderPath = pathJoin((this.server.settings.app as any).hostRootDirectory, this.fileUploadFolder);
-        this.modelFolderPath = pathJoin((this.server.settings.app as any).hostRootDirectory, 'camera');
+        this.storageFolderPath = pathJoin((this.server.settings.app as any).dataMiscRootDirectory, this.fileUploadFolder);
+        this.modelFolderPath = pathJoin((this.server.settings.app as any).dataMiscRootDirectory, 'camera');
         this.dockerApiVersion = this.config.get('dockerApiVersion') || defaultDockerApiVersion;
         this.dockerSocket = this.config.get('dockerSocket') || defaultDockerSocket;
         this.dockerImageName = this.config.get('dockerImageName') || defaultDockerImageName;
@@ -345,6 +345,13 @@ export class FileHandlerService {
     }
 
     private async getFirmwareProperties(): Promise<any> {
+        if (_get(process.env, 'LOCAL_DEBUG') === '1') {
+            return {
+                firmwareVersion: '0.0.0',
+                batteryLevel: '100'
+            };
+        }
+
         const result = {
             firmwareVersion: 'Unknown',
             batteryLevel: 'Unknown'
@@ -421,7 +428,7 @@ export class FileHandlerService {
             return;
         }
 
-        // wait here for 5 minues while we signal a reboot
+        // wait here for 5 minutes while we signal a reboot
         this.logger.log(['FileHandler', 'info'], `Signalling a restart - waiting 5 minutes...`);
 
         try {

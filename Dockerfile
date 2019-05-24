@@ -3,6 +3,7 @@ FROM arm32v7/node:10-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
     net-tools \
     unzip \
+    systemd-sysv \
     && apt-get install -y --no-install-recommends \
     libgstreamer1.0 \
     gstreamer1.0-plugins-base \

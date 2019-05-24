@@ -1,6 +1,6 @@
 {
   "name": "peabody-local-service",
-  "version": "1.0.126",
+  "version": "1.0.127",
   "description": "Local service for AI Dev Kit",
   "main": "index.js",
   "config": {
@@ -13,7 +13,8 @@
     "docker_build": "node ./scripts/docker_build.js --docker-build",
     "preversion": "npm test",
     "version": "node ./scripts/docker_build.js --docker-build",
-    "postversion": "node ./scripts/docker_build.js --docker-push"
+    "postversion": "node ./scripts/docker_build.js --docker-push",
+    "postinstall": "node ./scripts/setupDevEnvironment.js"
   },
   "author": "sseiber",
   "license": "MIT",
