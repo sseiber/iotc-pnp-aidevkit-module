@@ -76,7 +76,6 @@ debug.json
 coverage.html
 
 # AI Dev Kit local service
-camera
-storage
 client
 configs/**
+peabody*/**

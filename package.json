@@ -3,17 +3,14 @@
   "version": "1.0.127",
   "description": "Local service for AI Dev Kit",
   "main": "index.js",
-  "config": {
-    "imageName": "iotccrscotts.azurecr.io/peabody-local-service"
-  },
   "scripts": {
     "test": "node ./node_modules/jest/bin/jest.js",
     "tslint": "node ./node_modules/tslint/bin/tslint -p ./tsconfig.json",
     "build": "node ./node_modules/typescript/bin/tsc -p .",
-    "docker_build": "node ./scripts/docker_build.js --docker-build",
+    "dockerbuild": "node ./scripts/dockerBuild.js --docker-build",
     "preversion": "npm test",
-    "version": "node ./scripts/docker_build.js --docker-build",
-    "postversion": "node ./scripts/docker_build.js --docker-push",
+    "version": "node ./scripts/dockerBuild.js --docker-build",
+    "postversion": "node ./scripts/dockerBuild.js --docker-push",
     "postinstall": "node ./scripts/setupDevEnvironment.js"
   },
   "author": "sseiber",

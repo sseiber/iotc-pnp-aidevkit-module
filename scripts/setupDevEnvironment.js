@@ -23,6 +23,17 @@ async function createEnvironmentConfiguration(rootFolder) {
             hostIpAddress: 'localhost'
         }, { spaces: 4 });
     }
+
+    const imageConfigFilePath = path.resolve(rootFolder, `configs/imageConfig.json`);
+
+    if (!fse.pathExistsSync(imageConfigFilePath)) {
+        console.log(`Creating docker image configuration: ./${imageConfigFilePath}`);
+        await fse.ensureFile(imageConfigFilePath);
+
+        await fse.writeJson(imageConfigFilePath, {
+            imageName: 'container-registry/image-name'
+        }, { spaces: 4 });
+    }
 }
 
 async function createCameraConfiguration(rootFolder) {
@@ -45,6 +56,26 @@ async function createStateConfiguration(rootFolder) {
             system: {
                 systemName: uuid.v4(),
                 systemId: uuid.v4()
+            },
+            iotCentral: {
+                deviceId: "<device-id>",
+                deviceKey: "<device-key>",
+                properties: {
+                    prop_main_board: "Vision AI Development Kit",
+                    prop_os: "Yocto Linux",
+                    prop_soc: "Qualcomm QCS603",
+                    prop_wifi_bluetooth: "WCN3980 (1x1)/ Bluetooth low energy 5",
+                    prop_camera: "8MP/4K UHD",
+                    prop_emmc: "16GB",
+                    prop_system_memory: "4GB LPDDR4x",
+                    prop_speaker_mic: "Line in / out / 4x Mic / Speaker",
+                    prop_ethernet: "Via USB-C with adapter",
+                    prop_power: "Rechargeable battery / PoE / USB-C",
+                    prop_storage: "SD slot for microSD card",
+                    prop_indicator: "3x LED",
+                    prop_usb: "USB Type C",
+                    prop_hdmi: "HDMI A"
+                }
             }
         }, { spaces: 4 });
     }

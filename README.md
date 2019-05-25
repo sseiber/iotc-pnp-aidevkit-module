@@ -22,10 +22,12 @@ The project includes a Dockerfile and scripts used to build the docker container
       ```
       adb shell ifconfig wlan0
       ```
-  * Remove the sample module configuration in the Azure Portal
-    * When follow the setup instructions for the AI Dev Kit it will configure a sample module to be deployed to the device from Azure IoT Edge. The project below is meant to replace that module.
-    * Using the (Azure Port)[www.portal.azure.com] locate the Azure IoT Hub and find the Edge Device you configured for the Vision AI Dev Kit device.
-    * Remove the module deployment for that device.
+  * Remove the sample module that came with Vision AI Dev Kit
+    * The instructions for Vision AI Dev Kit it will provision a sample module to be deployed to the device from Azure IoT Hub. This sample project will replace the module that came with Vision AI Dev Kit.
+    * Using the (Azure Portal)[www.portal.azure.com] online locate the Azure IoT Hub that was provisioned in your subscription during the Vision AI Dev Kit setup instructions.
+    * Select IoT Edge on the left pane, then select the IoT Edge Device tab.
+    * You should see your Vision AI Dev Kit device. Select the device then select Set Modules at the top of the screen. You can delete the sample module provisioned by Vision AI Dev Kit.
+    * Remember this screen when you want to configure a new module deployment later.
 
 ## There are 3 ways to experiment with and develop code for Vision AI Dev Kit:
 1. ### Local development with code running in VSCode and controlling the camera over the network
@@ -69,23 +71,60 @@ The project includes a Dockerfile and scripts used to build the docker container
         ```
     * Press F5 (to start with the debugger)
     * You should see output that looks like this:
-
-        <img src="./assets/inferences.png" width="800">
+       ```
+       [05:59:36 GMT-0700], [log,[InferenceProcessor, info]] data: Inference: id:2 "person" 88%
+       [05:59:37 GMT-0700], [log,[InferenceProcessor, info]] data: Inference: id:2 "person" 94%
+       [05:59:39 GMT-0700], [log,[InferenceProcessor, info]] data: Inference: id:2 "person" 90%
+       [05:59:41 GMT-0700], [log,[InferenceProcessor, info]] data: Inference: id:2 "person" 89%
+       [05:59:43 GMT-0700], [log,[InferenceProcessor, info]] data: Inference: id:2 "person" 90%
+       ```
 
 ## Build a Docker container and run in manually
-  [This section is under development]
-  * Run the following command to start the Docker image  
+  * Build the project in a Docker container
+    * The package.json for this project contains a dockerbuild script entry. This uses a build script in the ./scripts directory along with the Dockerfile. It also looks for a tag name in the `./configs/imageName.json` file.
+    * Open the `./configs/imageName.json` and update the imageName field to your own container registry and image name.
+  * Run the command:
+      ```
+      npm run dockerbuild
+      ```
+  * When the build completes it should have build the docker container and pushed it to your container registry.
+  * Now switch to your Vision AI Dev Kit shell with `adb shell` and run the following commands on the device.
     ```
-    docker run -it --network=host -v /data/misc:/data/misc iotccrscotts.azurecr.io/peabody-local-service:<latest-version> node ./dist/index.js
+    docker login <your container registry> pw: <your container registry password>
     ```
+    You will only need to so this once. The container registry address and password will be cached in Docker.
+
+  * Run the following command to start the Docker image:
+    ```
+    docker run \
+        -it \
+        --rm \
+        -e videoCaptureSource=rtsp \
+        --network=host \
+        -v /run/systemd:/run/systemd \
+        -v /var/run/docker.sock:/var/run/docker.sock \
+        -v /data/misc:/data/misc \
+        -v /etc/version:/etc/version \
+        -v /sys/class/power_supply:/sys/class/power_supply \
+        <your-container-registry>/<your-docker-imagename>:<version-tag> \
+        node ./dist/index.js
+    ```
+
 ## Publish your Docker container and deploy it from IoT Edge
-  [This section is under development]
-  * From the Azure Port configure your IoT Edge module with the following configuration  
-    * Name:  
-    `peabody-camera (Use your own unique name here)`
-    * Image URI:  
-    `iotccrscotts.azurecr.io/peabody-local-service:<latest-version>`
-    * Container Create Options:  
+  * Using the (Azure Portal)[www.portal.azure.com] online go to your Azure IoT Hub that was provisioned in your subscription during the Vision AI Dev Kit setup instructions.
+  * Select IoT Edge on the left pane, then select the IoT Edge Device tab.
+  * You should see your Vision AI Dev Kit device. Select the device then select Set Modules at the top of the screen.
+  * Add the details about you Docker container here:
+    * Container Registry Settings
+    * Under Deployment Modules slect +Add and select "IoT Edge Module"
+    * On the right pain enter the following information:
+      * A descriptive name
+      * The full Docker container image uri (e.g. container-registry/image-name:version-tag)
+      * These environment variables:
+        | Name | Value |
+        | --- | --- |
+        | videoCaptureSource | rtcp |
+      * Container Create Options
         ```
         {
             "HostConfig": {
@@ -97,7 +136,11 @@ The project includes a Dockerfile and scripts used to build the docker container
                     ]
                 },
                 "Binds": [
-                    "/data/misc:/data/misc"
+                    "/run/systemd:/run/systemd",
+                    "/var/run/docker.sock:/var/run/docker.sock",
+                    "/data/misc:/data/misc",
+                    "/etc/version:/etc/version",
+                    "/sys/class/power_supply:/sys/class/power_supply:"
                 ],
                 "NetworkMode": "host"
             },
@@ -108,27 +151,134 @@ The project includes a Dockerfile and scripts used to build the docker container
             }
         }
         ```
-    * Environment Variables:  
-
-    * Select `Configure advanced Edge Runtime settings`  
-    In `Create Options` for the Edge Hub (the first section) add:  
-        ```
-        "User": "root",
-        ```
-      To the top (just above `HostConfig`)  
-    * Click through Next, Review, Submit. Your module should be deployed in a few minutes.
-
+      * Click Save and Next, Next, Submit
+      * In a few minutes your container should deploy to your Vision AI Dev Kit
 
 ## Development
-  * **test:**  
-  `npm run test`  
+  * Test scripts can be run with this command
+    ```
+    npm run test
+    ```
 
-  * **lint:**  
-  `npm run tslint`
+  * Manual lint checks can be run with this command
+    ```
+    npm run tslint
+    ```
 
-  * **docker image name:**  
-  The build script uses the `config` section in the `package.json` file to define the docker image name.
+  * Build a new docker image after with a new package.json version number:
+    ```
+    npm version [major|minor|patch] [--force]
+    ```
+    *this assumes access to the container registry for the image being built*
 
-  * **build a new version:**  
-  `npm version [major|minor|patch] [--force]`  
-  *this assumes access to the container registry for the image being built*
+## Advanced
+
+### [Azure IoT Central](https://azure.microsoft.com/en-us/services/iot-central/)
+This project includes support for connecting to [Azure IoT Central](https://azure.microsoft.com/en-us/services/iot-central/) and sending telemetry, state, events, and supports running commands sent from your IoT Central app.
+
+  * Create an Azure IoT Central app
+    * [Click on this link to create an IoT Central App for the Vision AI Dev Kit](https://apps.azureiotcentral.com/create?appTemplate=8cc2fcfc-163e-41e7-8cb5-ca057f109fe3)
+    * You can create a Pay-As-You-Go instance or a Trial instance
+  * Provision your camera with a Device Id and Device Key
+    * This step requires you to create a Device SAS Key and you will need the primary access key from your Azure IoT Central app.
+      * Open your Azure IoT Central app
+      * On the left side select Administration
+      * Select Device connection
+      * Write down the ScopeID (for use later)
+      * Set the Auto Approve setting to Enabled
+      * Set the Device Enrollment setting to Enabled
+      * Write down the Primary Key (for use with the dps-keygen tool)
+      * Using the [dps-keygen](https://github.com/Azure/dps-keygen) tool run the command:
+        ```
+        dps-keygen -mk:primarykey -di:deviceid
+        ```
+        Use a unique deviceid that you create. The output of this command will be the Device SAS key and will be associated with your Azure IoT Central application and your device (e.g. deviceid).
+      * Copy these two values to the file in `./peabody/storage/state.json`
+      * Copy this file to your Vision AI Dev Kit's filesystem at `/data/misc/storage`. Use the command:
+        ```
+        adb copy <path-to-state.json> /data/misc/storage
+        ```
+      * Now when you run your Docker container add the additional environment variables listed below to the Edge Module (for Azure IoT Hub deployments). Note that your `template-id` and your `template-version` can be retried from you Azure IoT Central app (Select Device Explorer and just below the title you will see the `templateid/templateversion` along with a copy button).
+        | Name | Value |
+        | --- | --- |
+        | enableIoTCentralProvisioning | 1 |
+        | videoCaptureSource | rtsp |
+        | iotCentralScopeId | 0ne0004EA3E |
+        | iotCentralTemplateId | your-template-id |
+        | iotCentralTemplateVersion | your-template-version |
+
+      Optionally you can run the Docker continer manually directly on the device with the following command:
+      ```
+      docker run \
+          -it \
+          --rm \
+          -e enableIoTCentralProvisioning=1 \
+          -e videoCaptureSource=rtsp \
+          -e iotCentralScopeId=0ne0004EA3E \
+          -e iotCentralTemplateId=<your-template-id> \
+          -e iotCentralTemplateVersion=<your-template-version> \
+          --network=host \
+          -v /run/systemd:/run/systemd \
+          -v /var/run/docker.sock:/var/run/docker.sock \
+          -v /data/misc:/data/misc \
+          -v /etc/version:/etc/version \
+          -v /sys/class/power_supply:/sys/class/power_supply \
+          <your-container-registry>/<your-docker-imagename>:<version-tag> \
+          node ./dist/index.js
+      ```
+      * After the Docker container starts you examine the logs to verify that it has correctly provisioned with your Azure IoT Central App:
+        ```
+        [log,startup,info] data:  > Machine: linux, 4 core, freemem=1050mb, totalmem=1828mb
+        [log,startup,info] data: 👨‍💻 Starting IoT Central provisioning
+        [log,[IoTCentralService, info]] data: Enabling DPS provisioning through IoT Central: sioning=1"
+        [log,[IoTCentralService, info]] data: Starting IoT Central provisioning for device: 
+        [log,[IoTCentralService, info]] data: IoT Central dps request succeeded - waiting for 
+        [log,[IoTCentralService, info]] data: IoT Central dps request succeeded - waiting for 
+        [log,[IoTCentralService, info]] data: IoT Central dps hub assignment: 4-a5b7-4bb558dde379.azure-devices.net
+        [log,[CameraService, info]] data: Handle setting change for setting_hdmi_output: true
+        [log,[IoTCentralService, info]] data: Device live properties updated
+        [log,startup,info] data: 👩‍💻 Finished IoT Central provisioning
+        [log,startup,info] data: 📁 Starting Docker image provisioning
+        [log,[FileHandler, info]] data: Provisioning docker imgage
+        [log,[IoTCentralService, info]] data: Device live properties updated
+        [log,[InferenceProcessor, info]] data: Handle setting change for shold: 80
+        [log,[IoTCentralService, info]] data: Device live properties updated
+        [log,[IoTCentralService, info]] data: Device live properties updated
+        [log,[InferenceProcessor, info]] data: Handle setting change for etting_detect_class: 
+        [log,[FileHandler, info]] data: Found existing version file: 1.0.127, new image is: 
+        [log,[IoTCentralService, info]] data: Device event message sent
+        [log,[IoTCentralService, info]] data: Device live properties updated
+        [log,[IoTCentralService, info]] data: Device live properties updated
+        [log,startup,info] data: 📁 Finished Docker image provisioning
+        ```
+
+      Telemetry should look like this:
+
+        ```
+        [log,[InferenceProcessor, info]] data: Inference: id:1 "person" 88%
+        [log,[InferenceProcessor, info]] data: Inference: id:1 "person" 85%
+        [log,[InferenceProcessor, info]] data: Inference: id:1 "person" 94%
+        [log,[InferenceProcessor, info]] data: Inference: id:1 "person" 66%
+        [log,[IoTCentralService, info]] data: Device telemetry message sent
+        [log,[IoTCentralService, info]] data: Device event message sent
+        [log,[InferenceProcessor, info]] data: Inference: id:1 "person" 95%
+        [log,[IoTCentralService, info]] data: Device telemetry message sent
+        [log,[IoTCentralService, info]] data: Device event message sent
+        [log,[InferenceProcessor, info]] data: Inference: id:1 "person" 95%
+        [log,[IoTCentralService, info]] data: Device telemetry message sent
+        [log,[IoTCentralService, info]] data: Device event message sent
+        [log,[InferenceProcessor, info]] data: Inference: id:1 "person" 96%
+        [log,[IoTCentralService, info]] data: Device telemetry message sent
+        [log,[IoTCentralService, info]] data: Device event message sent
+        [log,[InferenceProcessor, info]] data: Inference: id:1 "person" 97%
+        [log,[IoTCentralService, info]] data: Device telemetry message sent
+        [log,[IoTCentralService, info]] data: Device telemetry message sent
+        [log,[IoTCentralService, info]] data: Device live properties updated
+        ```
+      In your Azure IoT Central App you should beging to see telemetry flowing in:
+
+        <img src="./assets/iotcentral.png" width="800">
+
+## Reset your device and go back to the shipping sample
+If you want to revert back to the shipping sample module press the power button on the back of the device for 5-6 seconds. Next, follow the instructions online for the [Vision AI Dev Kit](https://www.visionaidevkit.com/)
+
