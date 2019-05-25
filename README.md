@@ -78,6 +78,11 @@ The project includes a Dockerfile and scripts used to build the docker container
        [05:59:41 GMT-0700], [log,[InferenceProcessor, info]] data: Inference: id:2 "person" 89%
        [05:59:43 GMT-0700], [log,[InferenceProcessor, info]] data: Inference: id:2 "person" 90%
        ```
+    * You can also use the web client by navigating your browser to `http://<camera-ip-address>:9010/client`. You should see a web client that looks like this:
+
+      <img src="./assets/webclient.png" width="800">
+
+      Using the web client you can view inferences detected by the vision model running on the Vision AI Dev Kit. Also using the [Microsoft Custom Vision](https://azure.microsoft.com/en-us/services/cognitive-services/custom-vision-service/) service you can build and train your own vision model and export it directly to the Vision AI Dev Kit. Using the web client you can swap your video model with one that you exported from the [Microsoft Custom Vision](https://azure.microsoft.com/en-us/services/cognitive-services/custom-vision-service/) service.
 
 ## Build a Docker container and run in manually
   * Build the project in a Docker container
@@ -171,16 +176,16 @@ The project includes a Dockerfile and scripts used to build the docker container
     ```
     *this assumes access to the container registry for the image being built*
 
-## Advanced
+## Azure IoT Central
 
-### [Azure IoT Central](https://azure.microsoft.com/en-us/services/iot-central/)
 This project includes support for connecting to [Azure IoT Central](https://azure.microsoft.com/en-us/services/iot-central/) and sending telemetry, state, events, and supports running commands sent from your IoT Central app.
 
   * Create an Azure IoT Central app
-    * [Click on this link to create an IoT Central App for the Vision AI Dev Kit](https://apps.azureiotcentral.com/create?appTemplate=8cc2fcfc-163e-41e7-8cb5-ca057f109fe3)
+    * [Click on this link to create an IoT Central App for the Vision AI Dev Kit](https://apps.azureiotcentral.com/create?appTemplate=0098b855-6bbd-49db-9945-d72edfd907ce)
     * You can create a Pay-As-You-Go instance or a Trial instance
+
   * Provision your camera with a Device Id and Device Key
-    * This step requires you to create a Device SAS Key and you will need the primary access key from your Azure IoT Central app.
+    * This step requires you to create a Device SAS Key and you will need the primary access key from your Azure IoT Central app.  
       * Open your Azure IoT Central app
       * On the left side select Administration
       * Select Device connection
@@ -193,28 +198,28 @@ This project includes support for connecting to [Azure IoT Central](https://azur
         dps-keygen -mk:primarykey -di:deviceid
         ```
         Use a unique deviceid that you create. The output of this command will be the Device SAS key and will be associated with your Azure IoT Central application and your device (e.g. deviceid).
-      * Copy these two values to the file in `./peabody/storage/state.json`
+      * Copy these two values to the file in `./peabody/storage/state.json` and update the `deviceId` and `deviceKey` values.
       * Copy this file to your Vision AI Dev Kit's filesystem at `/data/misc/storage`. Use the command:
         ```
-        adb copy <path-to-state.json> /data/misc/storage
+        adb copy ./peabody/storage/state.json /data/misc/storage
         ```
-      * Now when you run your Docker container add the additional environment variables listed below to the Edge Module (for Azure IoT Hub deployments). Note that your `template-id` and your `template-version` can be retried from you Azure IoT Central app (Select Device Explorer and just below the title you will see the `templateid/templateversion` along with a copy button).
+      * Add the additional environment variables listed below to the Edge Module (for Azure IoT Hub deployments). Note that your `template-id` and your `template-version` can be retrieved from you Azure IoT Central app (Select Device Explorer and just below the title you will see the `templateid/templateversion` along with a copy button).
         | Name | Value |
         | --- | --- |
         | enableIoTCentralProvisioning | 1 |
         | videoCaptureSource | rtsp |
-        | iotCentralScopeId | 0ne0004EA3E |
+        | iotCentralScopeId | your-scope-id |
         | iotCentralTemplateId | your-template-id |
         | iotCentralTemplateVersion | your-template-version |
 
-      Optionally you can run the Docker continer manually directly on the device with the following command:
+      Optionally you can run the Docker continer manually directly on the Vision AI Dev Kit (via the adb shell) with the following command:
       ```
       docker run \
           -it \
           --rm \
           -e enableIoTCentralProvisioning=1 \
           -e videoCaptureSource=rtsp \
-          -e iotCentralScopeId=0ne0004EA3E \
+          -e iotCentralScopeId=<your-scope-id> \
           -e iotCentralTemplateId=<your-template-id> \
           -e iotCentralTemplateVersion=<your-template-version> \
           --network=host \
@@ -226,59 +231,48 @@ This project includes support for connecting to [Azure IoT Central](https://azur
           <your-container-registry>/<your-docker-imagename>:<version-tag> \
           node ./dist/index.js
       ```
-      * After the Docker container starts you examine the logs to verify that it has correctly provisioned with your Azure IoT Central App:
+      After the Docker container starts you can examine the logs to verify that it has correctly provisioned with your Azure IoT Central App. You should see something like this:
         ```
-        [log,startup,info] data:  > Machine: linux, 4 core, freemem=1050mb, totalmem=1828mb
-        [log,startup,info] data: 👨‍💻 Starting IoT Central provisioning
-        [log,[IoTCentralService, info]] data: Enabling DPS provisioning through IoT Central: sioning=1"
-        [log,[IoTCentralService, info]] data: Starting IoT Central provisioning for device: 
-        [log,[IoTCentralService, info]] data: IoT Central dps request succeeded - waiting for 
-        [log,[IoTCentralService, info]] data: IoT Central dps request succeeded - waiting for 
-        [log,[IoTCentralService, info]] data: IoT Central dps hub assignment: 4-a5b7-4bb558dde379.azure-devices.net
-        [log,[CameraService, info]] data: Handle setting change for setting_hdmi_output: true
-        [log,[IoTCentralService, info]] data: Device live properties updated
-        [log,startup,info] data: 👩‍💻 Finished IoT Central provisioning
-        [log,startup,info] data: 📁 Starting Docker image provisioning
-        [log,[FileHandler, info]] data: Provisioning docker imgage
-        [log,[IoTCentralService, info]] data: Device live properties updated
-        [log,[InferenceProcessor, info]] data: Handle setting change for shold: 80
-        [log,[IoTCentralService, info]] data: Device live properties updated
-        [log,[IoTCentralService, info]] data: Device live properties updated
-        [log,[InferenceProcessor, info]] data: Handle setting change for etting_detect_class: 
-        [log,[FileHandler, info]] data: Found existing version file: 1.0.127, new image is: 
-        [log,[IoTCentralService, info]] data: Device event message sent
-        [log,[IoTCentralService, info]] data: Device live properties updated
-        [log,[IoTCentralService, info]] data: Device live properties updated
-        [log,startup,info] data: 📁 Finished Docker image provisioning
+        [06:28:02 GMT+0000], [log,startup,info] data:  > Machine: linux, 4 core, freemem=1050mb, totalmem=1828mb
+        [06:28:02 GMT+0000], [log,startup,info] data: 👨‍💻 Starting IoT Central provisioning
+        [06:28:02 GMT+0000], [log,[IoTCentralService, info]] data: Enabling DPS provisioning through IoT Central: "enableIoTCentralProvisioning=1"
+        [06:28:02 GMT+0000], [log,[IoTCentralService, info]] data: Starting IoT Central provisioning for device: peabody-home
+        [06:28:04 GMT+0000], [log,[IoTCentralService, info]] data: IoT Central dps request succeeded - waiting for hub assignment
+        [06:28:07 GMT+0000], [log,[IoTCentralService, info]] data: IoT Central dps request succeeded - waiting for hub assignment
+        [06:28:08 GMT+0000], [log,[IoTCentralService, info]] data: IoT Central dps hub assignment: iotc-fde292d1-90e2-4564-a5b7-4bb558dde379.azure-devices.net
+        [06:28:09 GMT+0000], [log,[CameraService, info]] data: Handle setting change for setting_hdmi_output: true
+        [06:28:09 GMT+0000], [log,[IoTCentralService, info]] data: Device live properties updated
+        [06:28:09 GMT+0000], [log,startup,info] data: 👩‍💻 Finished IoT Central provisioning
+        [06:28:09 GMT+0000], [log,startup,info] data: 📁 Starting Docker image provisioning
+        [06:28:09 GMT+0000], [log,[FileHandler, info]] data: Provisioning docker imgage
+        [06:28:09 GMT+0000], [log,[IoTCentralService, info]] data: Device live properties updated
+        [06:28:09 GMT+0000], [log,[InferenceProcessor, info]] data: Handle setting change for setting_inference_threshold: 80
+        [06:28:09 GMT+0000], [log,[IoTCentralService, info]] data: Device live properties updated
+        [06:28:09 GMT+0000], [log,[IoTCentralService, info]] data: Device live properties updated
+        [06:28:09 GMT+0000], [log,[InferenceProcessor, info]] data: Handle setting change for setting_detect_class: person
+        [06:28:09 GMT+0000], [log,[FileHandler, info]] data: Found existing version file: 1.0.127, new image is: 1.0.127
+        [06:28:09 GMT+0000], [log,[IoTCentralService, info]] data: Device event message sent
+        [06:28:09 GMT+0000], [log,[IoTCentralService, info]] data: Device live properties updated
+        [06:28:09 GMT+0000], [log,[IoTCentralService, info]] data: Device live properties updated
+        [06:28:09 GMT+0000], [log,startup,info] data: 📁 Finished Docker image provisioning
         ```
 
       Telemetry should look like this:
 
         ```
-        [log,[InferenceProcessor, info]] data: Inference: id:1 "person" 88%
-        [log,[InferenceProcessor, info]] data: Inference: id:1 "person" 85%
-        [log,[InferenceProcessor, info]] data: Inference: id:1 "person" 94%
-        [log,[InferenceProcessor, info]] data: Inference: id:1 "person" 66%
-        [log,[IoTCentralService, info]] data: Device telemetry message sent
-        [log,[IoTCentralService, info]] data: Device event message sent
-        [log,[InferenceProcessor, info]] data: Inference: id:1 "person" 95%
-        [log,[IoTCentralService, info]] data: Device telemetry message sent
-        [log,[IoTCentralService, info]] data: Device event message sent
-        [log,[InferenceProcessor, info]] data: Inference: id:1 "person" 95%
-        [log,[IoTCentralService, info]] data: Device telemetry message sent
-        [log,[IoTCentralService, info]] data: Device event message sent
-        [log,[InferenceProcessor, info]] data: Inference: id:1 "person" 96%
-        [log,[IoTCentralService, info]] data: Device telemetry message sent
-        [log,[IoTCentralService, info]] data: Device event message sent
-        [log,[InferenceProcessor, info]] data: Inference: id:1 "person" 97%
-        [log,[IoTCentralService, info]] data: Device telemetry message sent
-        [log,[IoTCentralService, info]] data: Device telemetry message sent
-        [log,[IoTCentralService, info]] data: Device live properties updated
+        [06:28:20 GMT+0000], [log,[InferenceProcessor, info]] data: Inference: id:1 "person" 88%
+        [06:28:21 GMT+0000], [log,[InferenceProcessor, info]] data: Inference: id:1 "person" 85%
+        [06:28:23 GMT+0000], [log,[InferenceProcessor, info]] data: Inference: id:1 "person" 94%
+        [06:28:24 GMT+0000], [log,[InferenceProcessor, info]] data: Inference: id:1 "person" 66%
+        [06:28:24 GMT+0000], [log,[IoTCentralService, info]] data: Device telemetry message sent
+        [06:28:24 GMT+0000], [log,[IoTCentralService, info]] data: Device event message sent
+        [06:28:26 GMT+0000], [log,[InferenceProcessor, info]] data: Inference: id:1 "person" 95%
+        [06:28:26 GMT+0000], [log,[IoTCentralService, info]] data: Device telemetry message sent
+        [06:28:26 GMT+0000], [log,[IoTCentralService, info]] data: Device event message sent
         ```
-      In your Azure IoT Central App you should beging to see telemetry flowing in:
+      In your Azure IoT Central App you should begin to see telemetry flowing in:
 
         <img src="./assets/iotcentral.png" width="800">
 
 ## Reset your device and go back to the shipping sample
 If you want to revert back to the shipping sample module press the power button on the back of the device for 5-6 seconds. Next, follow the instructions online for the [Vision AI Dev Kit](https://www.visionaidevkit.com/)
-
