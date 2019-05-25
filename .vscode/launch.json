@@ -7,6 +7,12 @@
         {
             "type": "node",
             "request": "launch",
+            "name": "BuildDocker",
+            "program": "${workspaceFolder}/scripts/dockerBuild.js"
+        },
+        {
+            "type": "node",
+            "request": "launch",
             "name": "Peabody Local Service",
             "console": "integratedTerminal",
             "program": "${workspaceFolder}/src/index.ts",
