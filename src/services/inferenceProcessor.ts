@@ -2,11 +2,10 @@ import { service, inject } from 'spryly';
 import { Server } from '@hapi/hapi';
 import { LoggingService } from './logging';
 import { ConfigService } from './config';
-import { SubscriptionService } from '../services/subscription';
+import { Subscription } from '../services/socket';
 import { DataStreamController } from '../services/dataStreamProcessor';
-import { VideoStreamController } from '../services/videoStreamProcessor';
 import { IoTCentralService, DeviceEvent, DeviceSetting, DeviceTelemetry } from '../services/iotcentral';
-import { sleep, bind } from '../utils';
+import { bind } from '../utils';
 import * as _get from 'lodash.get';
 
 const defaultConfidenceThreshold: number = 70;
@@ -22,20 +21,13 @@ export class InferenceProcessorService {
     @inject('config')
     private config: ConfigService;
 
-    @inject('subscription')
-    private subscription: SubscriptionService;
-
     @inject('dataStreamController')
     private dataStreamController: DataStreamController;
-
-    @inject('videoStreamController')
-    private videoStreamController: VideoStreamController;
 
     @inject('iotCentral')
     private iotCentral: IoTCentralService;
 
     private inferenceCount: number = 0;
-    private lastImageData: Buffer = null;
     private confidenceThreshold: number = defaultConfidenceThreshold;
     private detectClass: string = 'person';
 
@@ -44,23 +36,15 @@ export class InferenceProcessorService {
 
         this.server.method({ name: 'inferenceProcessor.inferenceSettingChange', method: this.handleInferenceSettingChange });
         this.server.method({ name: 'inferenceProcessor.dataInference', method: this.handleDataInference });
-        this.server.method({ name: 'inferenceProcessor.videoFrame', method: this.handleVideoFrame });
 
         this.confidenceThreshold = Number(this.config.get('confidenceThreshold')) || defaultConfidenceThreshold;
     }
 
-    public async startInferenceProcessor(rtspDataUrl: string, rtspVideoUrl: string) {
-        let result = await this.dataStreamController.startDataStreamProcessor(rtspDataUrl);
-
-        if (result === true) {
-            result = await this.videoStreamController.startVideoStreamProcessor(rtspVideoUrl);
-        }
-
-        return result;
+    public async startInferenceProcessor(rtspDataUrl: string) {
+        return this.dataStreamController.startDataStreamProcessor(rtspDataUrl);
     }
 
     public stopInferenceProcessor() {
-        this.videoStreamController.stopVideoStreamProcessor();
         this.dataStreamController.stopDataStreamProcessor();
     }
 
@@ -99,16 +83,8 @@ export class InferenceProcessorService {
         }
     }
 
-    @bind
-    public async handleVideoFrame(imageData: Buffer) {
-        this.lastImageData = imageData;
-    }
-
-    public async getHealth(): Promise<number[]> {
-        return [
-            this.dataStreamController.getHealth(),
-            this.videoStreamController.getHealth()
-        ];
+    public async getHealth(): Promise<number> {
+        return this.dataStreamController.getHealth();
     }
 
     @bind
@@ -138,16 +114,7 @@ export class InferenceProcessorService {
     }
 
     private async publishInference(inference): Promise<void> {
-        const trackTimeout = Date.now();
-        this.lastImageData = null;
-        while ((Date.now() - trackTimeout) < (1000 * 5) && this.lastImageData === null) {
-            await sleep(10);
-        }
-
-        this.subscription.publishInference({
-            inference,
-            imageData: this.lastImageData || Buffer.from('')
-        });
+        this.server.publish(Subscription.Inference, { inference });
 
         let detectClassCount = 0;
         const classes = inference.inferences.map(inferenceItem => {

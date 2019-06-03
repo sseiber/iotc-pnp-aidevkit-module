@@ -74,7 +74,6 @@ export class ClientRoutes extends RoutePlugin {
             description: 'Configure camera settings'
         }
     })
-    // @ts-ignore (request)
     public async postCamera(request: Request, h: ResponseToolkit) {
         try {
             const cameraSettings = _get(request, 'payload');
@@ -94,7 +93,7 @@ export class ClientRoutes extends RoutePlugin {
         options: {
             payload: {
                 output: 'stream',
-                maxBytes: 1024 * 1024 * 100, // BAD! Need a streaming solution for HapiJS
+                maxBytes: 1024 * 1024 * 100, // TODO! Need a dynamic solution
                 allow: 'multipart/form-data',
                 parse: true
             },
@@ -108,7 +107,6 @@ export class ClientRoutes extends RoutePlugin {
             description: 'Upload a new dlc model file and activate it'
         }
     })
-    // @ts-ignore (request)
     public async postSwitchVisionAiModel(request: Request, h: ResponseToolkit) {
         try {
             const file = (request.payload as any).model;
@@ -156,6 +154,63 @@ export class ClientRoutes extends RoutePlugin {
 
     @route({
         method: 'POST',
+        path: '/api/v1/client/video/start',
+        options: {
+            auth: {
+                strategies: ['client-jwt', 'client-localnetwork'],
+                access: {
+                    scope: ['api-client', 'admin']
+                }
+            },
+            tags: ['socket'],
+            description: 'Start streaming video data over the web socket connection'
+        }
+    })
+    // @ts-ignore request
+    public async postVideoStart(request: Request, h: ResponseToolkit) {
+        try {
+            const videoStreamUrl = _get(request, 'payload.videoStreamUrl');
+            if (!videoStreamUrl) {
+                throw Boom.badRequest('Expected a videoStreamUrl parameter');
+            }
+
+            const result = await this.camera.startVideoStreamProcessor(videoStreamUrl);
+
+            return h.response(result).code(201);
+        }
+        catch (ex) {
+            throw Boom.badRequest(ex.message);
+        }
+    }
+
+    @route({
+        method: 'POST',
+        path: '/api/v1/client/video/stop',
+        options: {
+            auth: {
+                strategies: ['client-jwt', 'client-localnetwork'],
+                access: {
+                    scope: ['api-client', 'admin']
+                }
+            },
+            tags: ['socket'],
+            description: 'Stop streaming video data over the web socket connection'
+        }
+    })
+    // @ts-ignore request
+    public async postVideoStop(request: Request, h: ResponseToolkit) {
+        try {
+            this.camera.stopVideoStreamProcessor();
+
+            return h.response().code(201);
+        }
+        catch (ex) {
+            throw Boom.badRequest(ex.message);
+        }
+    }
+
+    @route({
+        method: 'POST',
         path: '/api/v1/client/reset',
         options: {
             auth: {
@@ -168,7 +223,6 @@ export class ClientRoutes extends RoutePlugin {
             description: 'Reset the VAM engine or the device'
         }
     })
-    // @ts-ignore (request)
     public async postResetDevice(request: Request, h: ResponseToolkit) {
         try {
             const resetAction = _get(request, 'payload.action');

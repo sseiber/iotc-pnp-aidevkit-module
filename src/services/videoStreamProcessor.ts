@@ -1,20 +1,26 @@
 import { service, inject } from 'spryly';
 import { Server } from '@hapi/hapi';
-import { spawn } from 'child_process';
 import { LoggingService } from './logging';
 import { ConfigService } from './config';
+import { Subscription } from './socket';
 import { IoTCentralService, DeviceEvent, MessageType } from '../services/iotcentral';
+import { HealthState } from './serverTypes';
+import { spawn } from 'child_process';
 import { Transform } from 'stream';
-import { platform as osPlatform } from 'os';
+import { type as osType } from 'os';
 import { forget } from '../utils';
 import * as _get from 'lodash.get';
-import { HealthState } from './serverTypes';
 
 const rtspVideoCaptureSource = 'rtsp';
+const remuxVideoCaptureSource = 'remux';
+const defaultVideoCaptureSource = rtspVideoCaptureSource;
 const ffmpegCommand = 'ffmpeg';
 const ffmpegCaptureCommandArgsMac = '-f avfoundation -framerate 15 -video_device_index ###VIDEO_SOURCE -i default -loglevel quiet -an -f image2pipe -vf scale=640:360,fps=1/2 -q 1 pipe:1';
 const ffmpegCaptureCommandArgsLinux = '-f video4linux2 -i ###VIDEO_SOURCE -framerate 15 -loglevel quiet -an -image2pipe -vf scale=640:360,fps=1/2 -q 1 pipe:1';
 const ffmpegRtspCommandArgs = '-i ###VIDEO_SOURCE -loglevel quiet -an -f image2pipe -vf fps=1/2 -q 1 pipe:1';
+const ffmpegRtspRemuxCommandArgs = '-i ###VIDEO_SOURCE -loglevel verbose -vcodec copy -an -sn -dn -reset_timestamps 1 ' +
+    '-movflags empty_moov+default_base_moof+frag_keyframe -bufsize 256k -f mp4 -seekable 0 ' +
+    '-headers Access-Control-Allow-Origin:* -content_type video/mp4 http://127.0.0.1:9012/streamer';
 
 @service('videoStreamController')
 export class VideoStreamController {
@@ -30,34 +36,36 @@ export class VideoStreamController {
     @inject('iotCentral')
     private iotCentral: IoTCentralService;
 
-    private videoCaptureSource: string = rtspVideoCaptureSource;
+    private videoCaptureSource: string = defaultVideoCaptureSource;
     private ffmpegProcess: any = null;
-    private ffmpegCommandArgs: string = '';
     private healthState: number = HealthState.Good;
 
     public async init(): Promise<void> {
-        this.videoCaptureSource = this.config.get('videoCaptureSource') || rtspVideoCaptureSource;
-
-        // tslint:disable-next-line:prefer-conditional-expression
-        if (this.videoCaptureSource === rtspVideoCaptureSource) {
-            this.ffmpegCommandArgs = ffmpegRtspCommandArgs;
-        }
-        else {
-            this.ffmpegCommandArgs = osPlatform() === 'darwin' ? ffmpegCaptureCommandArgsMac : ffmpegCaptureCommandArgsLinux;
-        }
+        this.videoCaptureSource = this.config.get('videoCaptureSource') || defaultVideoCaptureSource;
     }
 
     public async startVideoStreamProcessor(videoStreamUrl: string): Promise<boolean> {
         if (!videoStreamUrl) {
-            this.logger.log(['DataStreamController', 'warning'], `Not starting image capture processor because videoStreamUrl is empty`);
+            this.logger.log(['VideoStreamController', 'warning'], `Not starting image capture processor because videoStreamUrl is empty`);
         }
 
         this.logger.log(['VideoStreamController', 'info'], `Starting image capture processor`);
 
-        const videoSource = this.videoCaptureSource === rtspVideoCaptureSource ? videoStreamUrl : this.videoCaptureSource;
+        let ffmpegCommandArgs;
+        if (this.videoCaptureSource === rtspVideoCaptureSource) {
+            ffmpegCommandArgs = ffmpegRtspCommandArgs.replace('###VIDEO_SOURCE', videoStreamUrl).split(' ');
+        }
+        else if (this.videoCaptureSource === remuxVideoCaptureSource) {
+            ffmpegCommandArgs = ffmpegRtspRemuxCommandArgs.replace('###VIDEO_SOURCE', videoStreamUrl).split(' ');
+        }
+        else {
+            ffmpegCommandArgs = osType() === 'Darwin'
+                ? ffmpegCaptureCommandArgsMac.replace('###VIDEO_SOURCE', this.videoCaptureSource).split(' ')
+                : ffmpegCaptureCommandArgsLinux.replace('###VIDEO_SOURCE', this.videoCaptureSource).split(' ');
+        }
 
         try {
-            this.ffmpegProcess = spawn(ffmpegCommand, this.ffmpegCommandArgs.replace('###VIDEO_SOURCE', videoSource).split(' '), { stdio: ['ignore', 'pipe', 'ignore'] });
+            this.ffmpegProcess = spawn(ffmpegCommand, ffmpegCommandArgs, { stdio: ['ignore', 'pipe', 'ignore'] });
 
             this.ffmpegProcess.on('error', (error) => {
                 this.logger.log(['videoController', 'error'], `Error on ffmpegProcess: ${_get(error, 'message')}`);
@@ -80,13 +88,19 @@ export class VideoStreamController {
                 this.ffmpegProcess = null;
             });
 
-            const frameProcessor = new FrameProcessor({});
+            if (this.videoCaptureSource === rtspVideoCaptureSource) {
+                const frameProcessor = new FrameProcessor({});
 
-            frameProcessor.on('jpeg', (jpegData: any) => {
-                forget((this.server.methods.inferenceProcessor as any).videoFrame, jpegData);
-            });
+                // @ts-ignore (jpegData)
+                frameProcessor.on('jpeg', (jpegData: any) => {
+                    this.logger.log(['videoController', 'info'], `Received video frame`);
+                });
 
-            this.ffmpegProcess.stdout.pipe(frameProcessor);
+                this.ffmpegProcess.stdout.pipe(frameProcessor);
+            }
+            else if (this.videoCaptureSource === remuxVideoCaptureSource) {
+                this.server.publish(Subscription.VideoStreamUp, {});
+            }
 
             await this.iotCentral.sendMeasurement(MessageType.Event, { [DeviceEvent.VideoStreamProcessingStarted]: '1' });
 

@@ -9,7 +9,9 @@ import { platform as osPlatform } from 'os';
 import { ConfigService } from './config';
 import { LoggingService } from './logging';
 import { StateService } from './state';
+import { Subscription, SocketService } from './socket';
 import { InferenceProcessorService } from '../services/inferenceProcessor';
+import { VideoStreamController } from '../services/videoStreamProcessor';
 import { FileHandlerService } from './fileHandler';
 import { IoTCentralService, MessageType, DeviceTelemetry, DeviceState, DeviceEvent, DeviceSetting, DeviceProperty } from '../services/iotcentral';
 import { ICameraResult, HealthState } from './serverTypes';
@@ -77,8 +79,14 @@ export class CameraService extends EventEmitter {
     @inject('state')
     private state: StateService;
 
+    @inject('socketService')
+    private socketService: SocketService;
+
     @inject('inferenceProcessor')
     private inferenceProcessor: InferenceProcessorService;
+
+    @inject('videoStreamController')
+    private videoStreamController: VideoStreamController;
 
     @inject('iotCentral')
     private iotCentral: IoTCentralService;
@@ -98,6 +106,10 @@ export class CameraService extends EventEmitter {
     private currentCameraSettings = {
         ...defaultCameraSettings
     };
+
+    public get cameraIpAddress(): string {
+        return this.ipAddresses.cameraIpAddress;
+    }
 
     public async init(): Promise<void> {
         this.logger.log(['CameraService', 'info'], 'initialize');
@@ -340,6 +352,26 @@ export class CameraService extends EventEmitter {
         }
     }
 
+    public async startVideoStreamProcessor(videoStreamUrl: string): Promise<ICameraResult> {
+        const result = await this.videoStreamController.startVideoStreamProcessor(videoStreamUrl);
+
+        return {
+            status: result,
+            title: 'Camera video stream',
+            message: result ? 'OK' : 'An error occurred with the device session. Restart the device and try the request again.'
+        };
+    }
+
+    public stopVideoStreamProcessor(): ICameraResult {
+        this.videoStreamController.stopVideoStreamProcessor();
+
+        return {
+            status: true,
+            title: 'Camera video stream',
+            message: 'OK'
+        };
+    }
+
     public async resetDevice(resetAction: string): Promise<ICameraResult> {
         const result = await this.destroyCameraSession();
 
@@ -359,14 +391,12 @@ export class CameraService extends EventEmitter {
         const iotCentralHealth = await this.iotCentral.getHealth();
         const fileHandlerHealth = await this.fileHandler.getHealth();
 
-        if (inferenceProcessorHealth[0] < HealthState.Good
-            || inferenceProcessorHealth[1] < HealthState.Good
+        if (inferenceProcessorHealth < HealthState.Good
             || iotCentralHealth < HealthState.Good
             || fileHandlerHealth < HealthState.Good) {
 
             this.logger.log(['CameraService', 'info'], `Health check watch: `
-                + `ds:${inferenceProcessorHealth[0]} `
-                + `dv:${inferenceProcessorHealth[1]} `
+                + `inf:${inferenceProcessorHealth} `
                 + `iot:${iotCentralHealth} `
                 + `file:${fileHandlerHealth}`);
 
@@ -378,7 +408,7 @@ export class CameraService extends EventEmitter {
 
         await this.iotCentral.sendMeasurement(
             MessageType.Telemetry,
-            { [DeviceTelemetry.CameraSystemHeartbeat]: inferenceProcessorHealth[0] + inferenceProcessorHealth[1] + iotCentralHealth + fileHandlerHealth });
+            { [DeviceTelemetry.CameraSystemHeartbeat]: inferenceProcessorHealth + iotCentralHealth + fileHandlerHealth });
 
         return HealthState.Good;
     }
@@ -440,7 +470,7 @@ export class CameraService extends EventEmitter {
                 }
 
                 if (status === true) {
-                    this.server.publish('/api/v1/subscription/model', this.modelFile);
+                    this.server.publish(Subscription.ModelChange, this.modelFile);
                     await this.iotCentral.sendMeasurement(MessageType.Event, { [DeviceEvent.VideoModelChange]: this.modelFile });
                 }
             }
@@ -473,8 +503,10 @@ export class CameraService extends EventEmitter {
                 if (result === true) {
                     this.logger.log(['CameraService', 'info'], `Starting inference processing service`);
 
-                    result = await this.inferenceProcessor.startInferenceProcessor(this.rtspVamUrl, this.rtspVideoUrl);
+                    result = await this.inferenceProcessor.startInferenceProcessor(this.rtspVamUrl);
                 }
+
+                this.socketService.startStreamingServer();
             }
 
             return result;
@@ -502,12 +534,6 @@ export class CameraService extends EventEmitter {
         }
     }
 
-    private getRtspVideoUrl(): boolean {
-        this.rtspVideoUrl = `rtsp://${this.ipAddresses.cameraIpAddress}:${this.rtspVideoPort}/live`;
-
-        return true;
-    }
-
     private async configureVideoPreview(cameraSettings: any): Promise<boolean> {
         try {
             this.logger.log(['CameraService', 'info'], `Setting video configuration: ${JSON.stringify(cameraSettings)}`);
@@ -529,7 +555,7 @@ export class CameraService extends EventEmitter {
             }
 
             if (result === true) {
-                result = this.getRtspVideoUrl();
+                this.rtspVideoUrl = `rtsp://${this.ipAddresses.cameraIpAddress}:${this.rtspVideoPort}/live`;
             }
 
             if (result === true) {

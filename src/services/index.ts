@@ -5,7 +5,7 @@ import { AuthService } from './auth';
 import { StorageService } from './storage';
 import { StateService } from './state';
 import { FileHandlerService } from './fileHandler';
-import { SubscriptionService } from './subscription';
+import { SocketService } from './socket';
 import { ClientProxyService } from './clientProxy';
 import { CameraService } from './camera';
 import { InferenceProcessorService } from './inferenceProcessor';
@@ -20,7 +20,7 @@ export default [
     StorageService,
     StateService,
     FileHandlerService,
-    SubscriptionService,
+    SocketService,
     ClientProxyService,
     CameraService,
     InferenceProcessorService,

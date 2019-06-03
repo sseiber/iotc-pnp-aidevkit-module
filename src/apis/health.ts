@@ -1,15 +1,15 @@
 import { inject, RoutePlugin, route } from 'spryly';
-import { Request, ResponseToolkit } from '@hapi/hapi';
+import { Server, Request, ResponseToolkit } from '@hapi/hapi';
 import { CameraService } from '../services/camera';
-import { SubscriptionService } from '../services/subscription';
+import { Subscription } from '../services/socket';
 import * as Boom from '@hapi/boom';
 
 export class HealthRoutes extends RoutePlugin {
+    @inject('$server')
+    private server: Server;
+
     @inject('camera')
     private camera: CameraService;
-
-    @inject('subscription')
-    private subscription: SubscriptionService;
 
     @route({
         method: 'GET',
@@ -23,9 +23,9 @@ export class HealthRoutes extends RoutePlugin {
     // @ts-ignore (request)
     public async health(request: Request, h: ResponseToolkit) {
         try {
-            this.subscription.publishHealth({ state: 'healthy' });
+            const healthState = await this.camera.checkHealthState() || 0;
 
-            const healthState = await this.camera.checkHealthState();
+            await this.server.publish(Subscription.Health, { state: healthState });
 
             return h.response(`HealthState: ${healthState}`).code(200);
         }

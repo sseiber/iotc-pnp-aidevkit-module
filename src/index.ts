@@ -7,6 +7,7 @@ import {
     totalmem as osTotalMem
 } from 'os';
 import { forget } from './utils';
+import { Subscription } from './services/socket';
 
 const composeOptions: ComposeOptions = {
     relativeTo: __dirname,
@@ -56,7 +57,7 @@ async function start() {
         await (server.methods.camera as any).startCamera();
         server.log(['startup', 'info'], `📸 Finished camera initialization`);
 
-        server.publish(`/api/v1/subscription/up`, {});
+        server.publish(Subscription.ServerUp, {});
     }
     catch (error) {
         // tslint:disable-next-line:no-console
