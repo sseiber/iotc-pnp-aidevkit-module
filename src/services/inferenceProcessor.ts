@@ -157,7 +157,7 @@ export class InferenceProcessorService {
                 detectClassCount++;
             }
 
-            return className || 'Unkonwn';
+            return className || 'Unknown';
         });
 
         await this.iotCentral.sendInferenceData(

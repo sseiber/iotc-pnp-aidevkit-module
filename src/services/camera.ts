@@ -241,7 +241,9 @@ export class CameraService extends EventEmitter {
                     frameRates,
                     modelFile: this.modelFile,
                     videoPreview: this.currentCameraSettings.videoPreview,
-                    vamProcessing: this.currentCameraSettings.vamProcessing
+                    vamProcessing: this.currentCameraSettings.vamProcessing,
+                    wowzaPlayerLicense: this.config.get('wowzaPlayerLicense'),
+                    wowzaPlayerVideoSourceUrl: this.config.get('wowzaPlayerVideoSourceUrl').replace('###DEVICEID', this.state.iotCentral.deviceId)
                 },
                 iotcConfig: {
                     systemName: this.state.system.systemName,
