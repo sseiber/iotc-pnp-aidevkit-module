@@ -2,7 +2,7 @@ import { inject, service } from 'spryly';
 import { Server } from '@hapi/hapi';
 import { ConfigService } from './config';
 import { LoggingService } from './logging';
-import { IoTCentralService, DeviceTelemetry, DeviceEvent, DeviceProperty, MessageType } from '../services/iotcentral';
+import { IoTCentralService, DeviceTelemetry, DeviceEvent, DeviceProperty, ProvisionStatus, MessageType } from '../services/iotcentral';
 import {
     join as pathJoin,
     resolve as pathResolve,
@@ -17,13 +17,6 @@ import * as _get from 'lodash.get';
 import * as compareVersions from 'compare-versions';
 import { bind, pjson, sleep } from '../utils';
 import { HealthState } from './serverTypes';
-
-export const ProvisionStatus = {
-    Installing: 'Installing',
-    Pending: 'Pending',
-    Completed: 'Completed',
-    Restarting: 'Restarting'
-};
 
 const defaultEdgeDeployment: string = '0';
 const defaultFileUploadFolder: string = 'storage';

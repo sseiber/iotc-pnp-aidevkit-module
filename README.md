@@ -209,8 +209,7 @@ This project includes support for connecting to [Azure IoT Central](https://azur
         | enableIoTCentralProvisioning | 1 |
         | videoCaptureSource | rtsp |
         | iotCentralScopeId | your-scope-id |
-        | iotCentralTemplateId | your-template-id |
-        | iotCentralTemplateVersion | your-template-version |
+        | iotCentralDcmid | your-dcmid-id |
 
       Optionally you can run the Docker continer manually directly on the Vision AI Dev Kit (via the adb shell) with the following command:
       ```
@@ -220,8 +219,7 @@ This project includes support for connecting to [Azure IoT Central](https://azur
           -e enableIoTCentralProvisioning=1 \
           -e videoCaptureSource=rtsp \
           -e iotCentralScopeId=<your-scope-id> \
-          -e iotCentralTemplateId=<your-template-id> \
-          -e iotCentralTemplateVersion=<your-template-version> \
+          -e iotCentralDcmid=<your-dcm-id> \
           --network=host \
           -v /run/systemd:/run/systemd \
           -v /var/run/docker.sock:/var/run/docker.sock \

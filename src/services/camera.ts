@@ -248,11 +248,11 @@ export class CameraService extends EventEmitter {
                 iotcConfig: {
                     systemName: this.state.system.systemName,
                     systemId: this.state.system.systemId,
+                    appUrl: this.state.iotCentral.appUrl,
                     deviceId: this.state.iotCentral.deviceId,
-                    scopeId: this.iotCentral.iotCentralScopeId,
                     deviceKey: this.state.iotCentral.deviceKey,
-                    templateId: this.iotCentral.iotCentralTemplateId,
-                    templateVersion: this.iotCentral.iotCentralTemplateVersion,
+                    scopeId: this.iotCentral.iotCentralScopeId,
+                    dcmid: this.iotCentral.iotCentralDcmid,
                     iotCentralHubConnectionString: this.iotCentral.iotCentralHubConnectionString,
                     iotCentralProvisioningStatus: this.iotCentral.iotCentralProvisioningStatus,
                     iotCentralConnectionStatus: this.iotCentral.iotCentralConnectionStatus
@@ -593,12 +593,9 @@ export class CameraService extends EventEmitter {
                 }
 
                 if (result === true) {
-                    const activeDeviceProperties = {
-                        [DeviceProperty.VideoModelName]: this.modelFile,
-                        [DeviceProperty.RtspDataUrl]: this.sessionToken ? this.rtspVamUrl : ''
-                    };
-
-                    await this.iotCentral.updateDeviceProperties(activeDeviceProperties);
+                    await this.iotCentral.updateDeviceProperties({
+                        [DeviceProperty.VideoModelName]: this.modelFile
+                    });
 
                     const activeDeviceState = {
                         [DeviceState.InferenceProcessor]: this.currentCameraSettings.vamProcessing ? 'On' : 'Off',

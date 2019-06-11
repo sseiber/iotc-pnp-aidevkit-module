@@ -55,7 +55,6 @@ export const DeviceSetting = {
 export const DeviceProperty = {
     IpAddress: 'prop_ip_address',
     RtspVideoUrl: 'prop_rtsp_video_url',
-    RtspDataUrl: 'prop_rtsp_data_url',
     IoTCentralConnectionStatus: 'prop_iotc_connection_status',
     Bitrate: 'prop_bitrate',
     Encoder: 'prop_encoder',
@@ -68,6 +67,13 @@ export const DeviceProperty = {
     BatteryLevel: 'prop_battery_level'
 };
 
+export const ProvisionStatus = {
+    Installing: 'Installing',
+    Pending: 'Pending',
+    Completed: 'Completed',
+    Restarting: 'Restarting'
+};
+
 export const DeviceCommand = {
     SwitchVisionAiModel: 'command_switch_vision_ai_model',
     StartTrainingMode: 'command_start_training_mode',
@@ -75,14 +81,14 @@ export const DeviceCommand = {
 };
 
 export const DeviceCommandParams = {
-    VisionModeluri: 'command_param_vision_model_uri'
+    VisionModelUrl: 'command_param_vision_model_url'
 };
 
 const SECONDS_PER_MINUTE: number = (60);
 const SECONDS_PER_HOUR: number = (60 * 60);
 
 const defaultIotCentralDpsProvisionApiVersion: string = '2019-01-15';
-const defaultIotCentralDpsAssigningApiVersion: string = '2018-11-01';
+const defaultIotCentralDpsAssigningApiVersion: string = '2019-01-15';
 const defaultIotCentralDpsEndpoint: string = 'https://global.azure-devices-provisioning.net/###SCOPEID/registrations/###DEVICEID';
 const defaultIotCentralDpsRegistrationSuffix: string = '/register?api-version=###API_VERSION';
 const defaultIotCentralDpsOperationsSuffix: string = '/operations/###OPERATION_ID?api-version=###API_VERSION';
@@ -103,8 +109,7 @@ export class IoTCentralService {
     private state: StateService;
 
     private iotCentralScopeIdInternal: string = '';
-    private iotCentralTemplateIdInternal: string = '';
-    private iotCentralTemplateVersionInternal: string = '';
+    private iotCentralDcmidInternal: string = '';
     private iotCentralDpsProvisionApiVersion: string = defaultIotCentralDpsProvisionApiVersion;
     private iotCentralDpsAssigningApiVersion: string = defaultIotCentralDpsAssigningApiVersion;
     private iotCentralDpsEndpoint: string = defaultIotCentralDpsEndpoint;
@@ -124,12 +129,8 @@ export class IoTCentralService {
         return this.iotCentralScopeIdInternal;
     }
 
-    public get iotCentralTemplateId() {
-        return this.iotCentralTemplateIdInternal;
-    }
-
-    public get iotCentralTemplateVersion() {
-        return this.iotCentralTemplateVersionInternal;
+    public get iotCentralDcmid() {
+        return this.iotCentralDcmidInternal;
     }
 
     public get iotCentralHubConnectionString() {
@@ -150,8 +151,7 @@ export class IoTCentralService {
         this.server.method({ name: 'iotCentral.connectToIoTCentral', method: this.connectToIoTCentral });
 
         this.iotCentralScopeIdInternal = this.config.get('iotCentralScopeId') || '';
-        this.iotCentralTemplateIdInternal = this.config.get('iotCentralTemplateId') || '';
-        this.iotCentralTemplateVersionInternal = this.config.get('iotCentralTemplateVersion') || '';
+        this.iotCentralDcmidInternal = this.config.get('iotCentralDcmid') || '';
         this.iotCentralDpsProvisionApiVersion = this.config.get('iotCentralDpsProvisionApiVersion') || defaultIotCentralDpsProvisionApiVersion;
         this.iotCentralDpsAssigningApiVersion = this.config.get('iotCentralDpsAssigningApiVersion') || defaultIotCentralDpsAssigningApiVersion;
         this.iotCentralDpsEndpoint = this.config.get('iotCentralDpsEndpoint') || defaultIotCentralDpsEndpoint;
@@ -206,7 +206,10 @@ export class IoTCentralService {
                 body: {
                     registrationId: iotCentralState.deviceId,
                     data: {
-                        iotcModelId: `${this.iotCentralTemplateId}/${this.iotCentralTemplateVersion}`
+                        '__iot:interfaces': {
+                            ModelRepositoryUri: this.iotCentralDcmid,
+                            CapabilityModelUri: this.iotCentralDcmid
+                        }
                     }
                 },
                 json: true
@@ -468,7 +471,7 @@ export class IoTCentralService {
     private async iotcClientSwitchVisionAiModel(iotcRequest: any, iotcResponse: any) {
         this.logger.log(['IoTCentralService', 'error'], `${DeviceCommand.SwitchVisionAiModel} command received`);
 
-        const fileUrl = _get(iotcRequest, 'payload.command_param_vision_model_uri');
+        const fileUrl = _get(iotcRequest, `payload.${DeviceCommandParams.VisionModelUrl}`);
 
         iotcResponse.send(fileUrl ? 200 : 400, (error) => {
             if (error) {
