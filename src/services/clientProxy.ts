@@ -1,11 +1,11 @@
-import { service, inject } from '@sseiber/sprightly';
+import { service, inject } from 'spryly';
 import { LoggingService } from './logging';
 import { ConfigService } from './config';
 import * as _defaults from 'lodash.defaults';
 import * as request from 'request';
 
-@service('peabodyProxy')
-export class PeabodyProxyService {
+@service('clientProxy')
+export class ClientProxyService {
     @inject('logger')
     private logger: LoggingService;
 
@@ -15,30 +15,30 @@ export class PeabodyProxyService {
     private nesClient;
 
     public async init() {
-        this.logger.log(['PeabodyProxyService', 'info'], 'initialize');
+        this.logger.log(['ClientProxyService', 'info'], 'initialize');
     }
 
     public async registerPluginProxy(nesClient): Promise<void> {
         this.nesClient = nesClient;
     }
 
-    public async updatePeabodyRegistration(peabodyId: string, systemName: string) {
+    public async updateClientRegistration(clientId: string, systemName: string) {
         const response = await this.nesClient.message({
-            type: 'updatePeabodyRegistration',
+            type: 'updateClientRegistration',
             payload: {
-                peabodyId,
+                clientId,
                 systemName
             }
         });
 
-        this.logger.log(['PeabodyProxyService', 'info'], response.message);
+        this.logger.log(['ClientProxyService', 'info'], response.message);
     }
 
     public async handleProxyRequest(requestData) {
         this.logger.log(['handleProxyRequest', 'info'], `Received proxy request from server - path: ${requestData.path}`);
 
         try {
-            const internalRequestResponse = await this.peabodyInternalRequest(requestData);
+            const internalRequestResponse = await this.clientInternalRequest(requestData);
 
             const resp = {
                 type: 'proxyResponse',
@@ -66,10 +66,10 @@ export class PeabodyProxyService {
         }
     }
 
-    private async peabodyInternalRequest(requestData): Promise<any> {
+    private async clientInternalRequest(requestData): Promise<any> {
         const options: any = {
             method: requestData.method,
-            uri: this.config.get('peabodyProxyService_internalEndPoint') + requestData.path,
+            uri: this.config.get('clientProxyService_internalEndPoint') + requestData.path,
             headers: requestData.headers
         };
 
@@ -82,8 +82,8 @@ export class PeabodyProxyService {
         }
 
         if (requestData.auth) {
-            if (requestData.auth.peabody) {
-                options.headers = _defaults({ Authorization: requestData.auth.peabody }, options.headers || {});
+            if (requestData.auth.client) {
+                options.headers = _defaults({ Authorization: requestData.auth.client }, options.headers || {});
             }
 
             if (requestData.auth.authorization) {
@@ -106,7 +106,7 @@ export class PeabodyProxyService {
         return new Promise((resolve, reject) => {
             request(options, (requestError, response, body) => {
                 if (requestError) {
-                    this.logger.log(['PeabodyProxyService', 'error'], `peabodyInternalRequest: ${requestError.message}`);
+                    this.logger.log(['ClientProxyService', 'error'], `clientInternalRequest: ${requestError.message}`);
                     return reject(requestError);
                 }
 
@@ -122,7 +122,7 @@ export class PeabodyProxyService {
                 }
 
                 if (response.statusCode !== 201) {
-                    this.logger.log(['PeabodyProxyService', 'error'], `Response status code = ${response.statusCode}`);
+                    this.logger.log(['ClientProxyService', 'error'], `Response status code = ${response.statusCode}`);
 
                     return reject({ message: body.message || body });
                 }

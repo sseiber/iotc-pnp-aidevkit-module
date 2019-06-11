@@ -1,59 +1,70 @@
-import { service, inject } from '@sseiber/sprightly';
+import { service, inject } from 'spryly';
+import { Server } from '@hapi/hapi';
 import { spawn } from 'child_process';
 import { LoggingService } from './logging';
-import { SubscriptionService } from '../services/subscription';
-import * as _get from 'lodash.get';
 import { Transform } from 'stream';
+import { IoTCentralService, DeviceEvent, MessageType } from '../services/iotcentral';
+import { forget } from '../utils';
+import * as _get from 'lodash.get';
+import { HealthState } from './serverTypes';
 
 const gstCommand = 'gst-launch-1.0';
 const gstCommandArgs = '-q rtspsrc location=###DATA_STREAM_URL protocols=tcp ! application/x-rtp, media=application ! fakesink dump=true';
 
 @service('dataStreamController')
 export class DataStreamController {
+    @inject('$server')
+    private server: Server;
+
     @inject('logger')
     private logger: LoggingService;
 
-    @inject('subscription')
-    private subscription: SubscriptionService;
+    @inject('iotCentral')
+    private iotCentral: IoTCentralService;
 
-    private gstProcess = null;
+    private gstProcess: any = null;
+    private healthState: number = HealthState.Good;
 
     public async startDataStreamProcessor(dataStreamUrl: string): Promise<boolean> {
-        this.logger.log(['DataStreamController', 'info'], `Starting capture processes`);
+        if (!dataStreamUrl) {
+            this.logger.log(['DataStreamController', 'warning'], `Not starting inference processor because dataStreamUrl is empty`);
+        }
+
+        this.logger.log(['DataStreamController', 'info'], `Starting inference processor`);
 
         try {
             this.gstProcess = spawn(gstCommand, gstCommandArgs.replace('###DATA_STREAM_URL', dataStreamUrl).split(' '), { stdio: ['ignore', 'pipe', 'ignore'] });
 
             this.gstProcess.on('error', (error) => {
-                this.logger.log(['dataController', 'error'], `Error on gstProcess: ${error}`);
-                this.gstProcess = null;
+                this.logger.log(['dataController', 'error'], `Error on gstProcess: ${_get(error, 'message')}`);
+
+                forget(this.iotCentral.sendMeasurement, MessageType.Event, { [DeviceEvent.DataStreamProcessingError]: _get(error, 'message') });
+
+                this.healthState = HealthState.Critical;
             });
 
             this.gstProcess.on('exit', (code, signal) => {
                 this.logger.log(['dataController', 'info'], `Exit on gstProcess, code: ${code}, signal: ${signal}`);
+
+                forget(this.iotCentral.sendMeasurement, MessageType.Event, { [DeviceEvent.DataStreamProcessingStopped]: '1' });
+
+                if (this.gstProcess !== null) {
+                    // abnormal exit
+                    this.healthState = HealthState.Warning;
+                }
+
                 this.gstProcess = null;
             });
 
             const frameProcessor = new FrameProcessor({});
 
-            frameProcessor.on('inference', async (inference: any) => {
-                const inferences = _get(inference, 'objects');
-                if (inferences && Array.isArray(inferences)) {
-                    for (const inferenceItem of inferences) {
-                        this.logger.log(['DataStreamController', 'info'], `Inference: `
-                            + `id:${_get(inferenceItem, 'id')} `
-                            + `"${_get(inferenceItem, 'display_name')}" `
-                            + `${_get(inferenceItem, 'confidence')}% `);
-
-                        this.subscription.publishInference({
-                            timestamp: inference.timestamp,
-                            ...inferenceItem
-                        });
-                    }
-                }
+            frameProcessor.on('inference', (inference: any) => {
+                forget((this.server.methods.inferenceProcessor as any).dataInference, inference);
             });
 
             this.gstProcess.stdout.pipe(frameProcessor);
+
+            forget(this.iotCentral.sendMeasurement, MessageType.Event, { [DeviceEvent.DataStreamProcessingStarted]: '1' });
 
             return true;
         }
@@ -75,6 +86,10 @@ export class DataStreamController {
         process.kill();
 
         return;
+    }
+
+    public getHealth(): number {
+        return this.healthState;
     }
 }
 
@@ -146,7 +161,7 @@ class FrameProcessor extends Transform {
         }
         catch (ex) {
             // tslint:disable no-console variable-name
-            console.log(`##Parse exception: ${inferenceTextData}`);
+            console.log(`##Inference parse exception: ${inferenceTextData}`);
 
             // tslint:disable no-console variable-name
             console.log(`##Raw: ${chunkString}`);

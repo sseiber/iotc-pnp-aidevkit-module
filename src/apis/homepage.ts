@@ -1,5 +1,5 @@
-import { RoutePlugin, route } from '@sseiber/sprightly';
-import { Request, ResponseToolkit } from 'hapi';
+import { RoutePlugin, route } from 'spryly';
+import { Request, ResponseToolkit } from '@hapi/hapi';
 import {
     dirname as pathDirname,
     join as pathJoin,
@@ -26,7 +26,7 @@ export class HomePageRoutes extends RoutePlugin {
 
     @route({
         method: 'GET',
-        path: '/peabody/{path*}',
+        path: '/client/{path*}',
         options: {
             tags: ['homepage'],
             description: 'The homepage spa'
@@ -41,12 +41,12 @@ export class HomePageRoutes extends RoutePlugin {
 
     @route({
         method: 'GET',
-        path: '/favicon.ico',
+        path: '/favicons/favicon.ico',
         options: {
             tags: ['homepage'],
             description: 'The homepage favicon',
             handler: {
-                file: pathJoin(rootDirectory, 'static', 'favicon.ico')
+                file: pathJoin(rootDirectory, 'favicons', 'favicon.ico')
             }
         }
     })
@@ -57,13 +57,13 @@ export class HomePageRoutes extends RoutePlugin {
 
     @route({
         method: 'GET',
-        path: '/static/{path*}',
+        path: '/favicons/{path*}',
         options: {
             tags: ['homepage'],
             description: 'The homepage static assets',
             handler: {
                 directory: {
-                    path: pathJoin(rootDirectory, 'static'),
+                    path: pathJoin(rootDirectory, 'favicons'),
                     index: false
                 }
             }

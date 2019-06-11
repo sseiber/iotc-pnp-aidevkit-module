@@ -1,4 +1,4 @@
-import { ComposeManifest } from '@sseiber/sprightly';
+import { ComposeManifest } from 'spryly';
 import { resolve as pathResolve } from 'path';
 
 const DefaultPort = 9010;
@@ -11,8 +11,8 @@ export function manifest(config?: any): ComposeManifest {
             app: {
                 usePortal: config.usePortal,
                 rootDirectory: pathResolve(__dirname, '..'),
-                peabodyDirectory: process.env.PEABODY_STORAGE || '/data/misc',
-                slogan: 'Peabody local service'
+                dataMiscRootDirectory: process.env.DATAMISC_ROOT || '/data/misc',
+                slogan: 'AI Dev Kit local service'
             }
         },
         services: [
@@ -21,10 +21,10 @@ export function manifest(config?: any): ComposeManifest {
         plugins: [
             ...[
                 {
-                    plugin: 'inert'
+                    plugin: '@hapi/inert'
                 },
                 {
-                    plugin: 'good',
+                    plugin: '@hapi/good',
                     options: generateLoggingOptions(config)
                 }
             ],
@@ -51,7 +51,7 @@ function generateLoggingOptions(config: any) {
         reporters: {
             console: [
                 {
-                    module: 'good-squeeze',
+                    module: '@hapi/good-squeeze',
                     name: 'Squeeze',
                     args: [
                         {
@@ -63,7 +63,7 @@ function generateLoggingOptions(config: any) {
                     ]
                 },
                 {
-                    module: 'good-console',
+                    module: '@hapi/good-console',
                     args: [
                         {
                             format: '[[]hh:mm:ss [GMT]ZZ[]]',

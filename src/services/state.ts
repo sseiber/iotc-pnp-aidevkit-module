@@ -1,4 +1,4 @@
-import { service, inject } from '@sseiber/sprightly';
+import { service, inject } from 'spryly';
 import { LoggingService } from './logging';
 import { ConfigService } from './config';
 import { StorageService } from './storage';
@@ -19,8 +19,12 @@ export class StateService {
     private stateInternal: any;
     private stateFile;
 
-    public get state(): any {
-        return this.stateInternal;
+    public get system(): any {
+        return this.stateInternal.system || {};
+    }
+
+    public get iotCentral(): any {
+        return this.stateInternal.iotCentral || {};
     }
 
     public async init() {
@@ -30,23 +34,21 @@ export class StateService {
 
         await this.loadState();
 
-        if (!this.systemName) {
-            this.stateInternal.registration.systemName = uuidV4();
+        if (!this.stateInternal.system.systemName) {
+            this.stateInternal.system.systemName = uuidV4();
         }
 
-        if (!this.systemId) {
-            this.stateInternal.registration.systemId = uuidV4();
+        if (!this.stateInternal.system.systemId) {
+            this.stateInternal.system.systemId = uuidV4();
         }
 
         await this.flushState();
     }
 
-    public get systemName(): string {
-        return this.stateInternal.registration.systemName;
-    }
+    public async setIotCentralProperty(property: string, value: any) {
+        this.stateInternal.iotCentral[property] = value;
 
-    public get systemId(): string {
-        return this.stateInternal.registration.systemId;
+        await this.flushState();
     }
 
     private async loadState() {
@@ -54,7 +56,7 @@ export class StateService {
             this.stateInternal = await this.storage.get(this.stateFile);
             if (!this.stateInternal) {
                 this.stateInternal = {
-                    registration: {
+                    system: {
                         systemName: '',
                         systemId: ''
                     }

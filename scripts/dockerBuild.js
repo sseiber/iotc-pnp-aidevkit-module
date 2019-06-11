@@ -1,17 +1,19 @@
 // tslint:disable:no-console
 const childProcess = require('child_process');
 const os = require('os');
+const path = require('path');
+const fse = require('fs-extra');
 
 const processArgs = require('commander')
     .option('-b, --docker-build', 'Docker build the image')
     .option('-p, --docker-push', 'Docker push the image')
+    .option('-r, --workspace-root <workspaceRoot>', 'Workspace root folder path')
     .option('-v, --image-version <version>', 'Docker image version override')
     .parse(process.argv);
 
-const dockerVersion = process.env.npm_package_version || processArgs.imageVersion || 'latest';
-const dockerImage = `${process.env.npm_package_config_imageName}:${dockerVersion}`;
+const workspaceRootFolder = processArgs.workspaceRoot || process.cwd();
 
-async function execDockerBuild() {
+async function execDockerBuild(dockerImage) {
     const dockerArgs = [
         'build',
         '-t',
@@ -22,7 +24,7 @@ async function execDockerBuild() {
     childProcess.execFileSync('docker', dockerArgs, { stdio: [0, 1, 2] });
 }
 
-async function execDockerPush() {
+async function execDockerPush(dockerImage) {
     const dockerArgs = [
         'push',
         dockerImage
@@ -32,18 +34,23 @@ async function execDockerPush() {
 }
 
 async function start() {
-    console.log(`Docker image: ${dockerImage}`);
-    console.log(`Platform: ${os.type()}`);
-
     let buildFailed = false;
 
     try {
+        const imageConfigFilePath = path.resolve(workspaceRootFolder, `configs/imageConfig.json`);
+        const imageConfig = fse.readJSONSync(imageConfigFilePath);
+        const dockerVersion = process.env.npm_package_version || processArgs.imageVersion || 'latest';
+        const dockerImage = `${imageConfig.imageName}:${dockerVersion}`;
+
+        console.log(`Docker image: ${dockerImage}`);
+        console.log(`Platform: ${os.type()}`);
+    
         if (processArgs.dockerBuild) {
-            await execDockerBuild();
+            await execDockerBuild(dockerImage);
         }
 
         if (processArgs.dockerPush) {
-            await execDockerPush();
+            await execDockerPush(dockerImage);
         }
     } catch (e) {
         buildFailed = true;

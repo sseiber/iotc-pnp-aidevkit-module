@@ -1,5 +1,5 @@
-import { service, inject } from '@sseiber/sprightly';
-import { Request, ResponseToolkit } from 'hapi';
+import { service, inject } from 'spryly';
+import { Request, ResponseToolkit } from '@hapi/hapi';
 import { LoggingService } from './logging';
 import { StorageService } from './storage';
 import { StateService } from './state';
@@ -34,7 +34,7 @@ export class AuthService {
     public async init() {
         this.logger.log(['AuthService', 'info'], 'initialize');
 
-        this.issuerInternal = this.state.systemId;
+        this.issuerInternal = this.state.system.systemId;
         if (!this.issuerInternal) {
             throw new Error('No system id defined');
         }

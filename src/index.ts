@@ -1,11 +1,12 @@
 import { manifest } from './manifest';
-import { compose, ComposeOptions } from '@sseiber/sprightly';
+import { compose, ComposeOptions } from 'spryly';
 import {
     platform as osPlatform,
     cpus as osCpus,
     freemem as osFreeMem,
     totalmem as osTotalMem
 } from 'os';
+import { forget } from './utils';
 
 const composeOptions: ComposeOptions = {
     relativeTo: __dirname,
@@ -17,7 +18,6 @@ const composeOptions: ComposeOptions = {
     }
 };
 
-// Get into Chipper's head on errors!
 // process.on('unhandledRejection', (e) => {
 //     // tslint:disable:no-console
 //     console.log(['startup', 'error'], `Excepction on startup... ${e.message}`);
@@ -37,12 +37,24 @@ async function start() {
 
         await server.start();
 
-        server.log(['startup', 'info'], `✅ Server started`);
+        server.log(['startup', 'info'], `✅ Core server started`);
         server.log(['startup', 'info'], `🌎 ${server.info.uri}`);
         server.log(['startup', 'info'], ` > Hapi version: ${server.version}`);
         server.log(['startup', 'info'], ` > Plugins: [${Object.keys(server.registrations).join(', ')}]`);
         server.log(['startup', 'info'], ` > Machine: ${osPlatform()}, ${osCpus().length} core, ` +
             `freemem=${(osFreeMem() / 1024 / 1024).toFixed(0)}mb, totalmem=${(osTotalMem() / 1024 / 1024).toFixed(0)}mb`);
+
+        server.log(['startup', 'info'], `👨‍💻 Starting IoT Central provisioning`);
+        await (server.methods.iotCentral as any).connectToIoTCentral();
+        server.log(['startup', 'info'], `👩‍💻 Finished IoT Central provisioning`);
+
+        server.log(['startup', 'info'], `📁 Starting Docker image provisioning`);
+        await (server.methods.fileHandler as any).provisionDockerImage();
+        server.log(['startup', 'info'], `📁 Finished Docker image provisioning`);
+
+        server.log(['startup', 'info'], `📷 Starting camera initialzation`);
+        await (server.methods.camera as any).startCamera();
+        server.log(['startup', 'info'], `📸 Finished camera initialization`);
 
         server.publish(`/api/v1/subscription/up`, {});
     }
@@ -52,4 +64,4 @@ async function start() {
     }
 }
 
-start();
+forget(start);

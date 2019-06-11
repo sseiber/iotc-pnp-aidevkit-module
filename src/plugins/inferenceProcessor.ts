@@ -1,8 +1,8 @@
-import { HapiPlugin } from '@sseiber/sprightly';
-import { Server } from 'hapi';
-import * as Nes from 'nes';
+import { HapiPlugin } from 'spryly';
+import { Server } from '@hapi/hapi';
+import * as Nes from '@hapi/nes';
 
-export class InferenceProxyPlugin implements HapiPlugin {
+export class InferenceProcessorPlugin implements HapiPlugin {
     public async register(server: Server) {
         await server.register(Nes);
 

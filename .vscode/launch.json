@@ -7,7 +7,7 @@
         {
             "type": "node",
             "request": "launch",
-            "name": "Launch Program",
+            "name": "Peabody Local Service",
             "console": "integratedTerminal",
             "program": "${workspaceFolder}/src/index.ts",
             "protocol": "inspector",
@@ -24,7 +24,8 @@
             "env": {
                 "NODE_ENV": "local",
                 "PORT": "9010",
-                "PEABODY_STORAGE": "${workspaceFolder}/peabody"
+                "LOCAL_DEBUG": "1",
+                "DATAMISC_ROOT": "${workspaceFolder}/peabody"
             }
         }
     ]

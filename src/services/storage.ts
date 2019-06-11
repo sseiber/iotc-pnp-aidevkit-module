@@ -1,6 +1,6 @@
 const ROOT = '__ROOT__';
-import { service, inject } from '@sseiber/sprightly';
-import { Server } from 'hapi';
+import { service, inject } from 'spryly';
+import { Server } from '@hapi/hapi';
 import { LoggingService } from './logging';
 import { promisify } from 'util';
 import * as fse from 'fs-extra';
@@ -23,9 +23,9 @@ export class StorageService {
     public async init() {
         this.logger.log(['StorageService', 'info'], 'initialize');
 
-        this.storageDirectory = pathJoin((this.server.settings.app as any).peabodyDirectory, 'storage');
+        this.storageDirectory = pathJoin((this.server.settings.app as any).dataMiscRootDirectory, 'storage');
 
-        this.setup();
+        await this.setup();
     }
 
     public async get(scope: string, property?: string): Promise<any> {

@@ -1,7 +1,7 @@
-import { inject, RoutePlugin, route } from '@sseiber/sprightly';
-import { Request, ResponseToolkit } from 'hapi';
+import { inject, RoutePlugin, route } from 'spryly';
+import { Request, ResponseToolkit } from '@hapi/hapi';
 import { AuthService } from '../services/auth';
-import * as Boom from 'boom';
+import * as Boom from '@hapi/boom';
 
 export class AuthRoutes extends RoutePlugin {
     @inject('auth')
@@ -12,7 +12,7 @@ export class AuthRoutes extends RoutePlugin {
         path: '/api/v1/auth/generate',
         options: {
             auth: {
-                strategies: ['peabody-jwt', 'peabody-localnetwork'],
+                strategies: ['client-jwt', 'client-localnetwork'],
                 scope: ['admin']
             },
             tags: ['auth'],

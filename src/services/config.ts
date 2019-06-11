@@ -1,4 +1,4 @@
-import { service } from '@sseiber/sprightly';
+import { service } from 'spryly';
 import * as nconf from 'nconf';
 
 @service('config')

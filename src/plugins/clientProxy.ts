@@ -1,10 +1,10 @@
-import { HapiPlugin, inject } from '@sseiber/sprightly';
-import { Server } from 'hapi';
+import { HapiPlugin, inject } from 'spryly';
+import { Server } from '@hapi/hapi';
 import { LoggingService } from '../services/logging';
 import { ConfigService } from '../services/config';
 import { StateService } from '../services/state';
-import { PeabodyProxyService } from '../services/peabodyProxy';
-import { Client as NesClient } from 'nes';
+import { ClientProxyService } from '../services/clientProxy';
+import { Client as NesClient } from '@hapi/nes';
 import * as _get from 'lodash.get';
 
 class DeferredPromise {
@@ -28,7 +28,7 @@ class DeferredPromise {
     }
 }
 
-export class PeabodyProxyPlugin implements HapiPlugin {
+export class ClientProxyPlugin implements HapiPlugin {
     @inject('$server')
     private server: Server;
 
@@ -41,40 +41,39 @@ export class PeabodyProxyPlugin implements HapiPlugin {
     @inject('state')
     private state: StateService;
 
-    @inject('peabodyProxy')
-    private peabodyProxy: PeabodyProxyService;
+    @inject('clientProxy')
+    private clientProxy: ClientProxyService;
 
     private registrationHooks;
     private nesClient;
 
     // @ts-ignore (server, options)
     public async register(server: Server, options: any) {
-        this.logger.log(['PeabodyProxyPlugin', 'info'], 'registering local server instance with cloud service');
+        this.logger.log(['ClientProxyPlugin', 'info'], 'registering local server instance with cloud service');
 
         this.registrationHooks = [];
-        this.nesClient = new NesClient(this.config.get('peabodyProxyService_proxyWsEndPoint'));
+        this.nesClient = new NesClient(this.config.get('clientProxyService_proxyWsEndPoint'));
 
         this.nesClient.onError = (nesError) => {
-            this.logger.log(['PeabodyProxyPlugin', 'error'], `Nes error: ${nesError.message}`);
+            this.logger.log(['ClientProxyPlugin', 'error'], `Nes error: ${nesError.message}`);
         };
 
         // @ts-ignore (willReconnect)
         this.nesClient.onDisconnect = (willReconnect, nesLog) => {
-            this.logger.log(['PeabodyProxyPlugin', 'info'], `Nes disconnect: ${nesLog.explanation}`);
+            this.logger.log(['ClientProxyPlugin', 'info'], `Nes disconnect: ${nesLog.explanation}`);
         };
 
-        // tslint:disable-next-line:space-before-function-paren
         this.nesClient.onConnect = async () => {
-            this.logger.log(['PeabodyProxyPlugin', 'info'], 'Nes connect: to Peabody remote host');
+            this.logger.log(['ClientProxyPlugin', 'info'], 'Nes connect: to Client remote host');
 
             // Send registration packet on every connection
             let registerClientResponse;
             let registerClientError;
             try {
                 registerClientResponse = await this.nesClient.message({
-                    type: 'registerPeabodyId',
+                    type: 'registerClientId',
                     payload: {
-                        peabodyId: this.state.systemId
+                        clientId: this.state.system.systemId
                     }
                 });
             }
@@ -89,27 +88,26 @@ export class PeabodyProxyPlugin implements HapiPlugin {
                     return p1.reject(registerClientError);
                 }
                 else {
-                    this.logger.log(['PeabodyProxyPlugin', 'info'], `Received socket mapping response from server: ${_get(registerClientResponse, 'payload.message')}`);
+                    this.logger.log(['ClientProxyPlugin', 'info'], `Received socket mapping response from server: ${_get(registerClientResponse, 'payload.message')}`);
 
                     return p1.resolve(registerClientResponse);
                 }
             }
         };
 
-        // tslint:disable-next-line:space-before-function-paren
         this.nesClient.onUpdate = async (message) => {
-            this.logger.log(['PeabodyProxyPlugin', 'info'], `Proxy Nes update - path: ${message.path}`);
+            this.logger.log(['ClientProxyPlugin', 'info'], `Proxy Nes update - path: ${message.path}`);
 
-            await this.peabodyProxy.handleProxyRequest(message);
+            await this.clientProxy.handleProxyRequest(message);
         };
 
         try {
-            await this.peabodyProxy.registerPluginProxy(this.nesClient);
+            await this.clientProxy.registerPluginProxy(this.nesClient);
 
-            await this.registerPeabodyService();
+            await this.registerClientService();
         }
         catch (error) {
-            this.logger.log(['PeabodyProxyPlugin', 'error'], `Error registering websocket: ${error.message}`);
+            this.logger.log(['ClientProxyPlugin', 'error'], `Error registering websocket: ${error.message}`);
 
             if ((this.server.settings.app as any).usePortal === false) {
                 // running in serverless mode -- continue on
@@ -121,7 +119,7 @@ export class PeabodyProxyPlugin implements HapiPlugin {
         }
     }
 
-    private async registerPeabodyService() {
+    private async registerClientService() {
         const p1 = new DeferredPromise();
         this.registrationHooks.push(p1);
 

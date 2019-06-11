@@ -62,7 +62,6 @@ typings/
 # Build output
 dist
 server_dist
-client_dist
 
 # Ignore Mac DS_Store files
 .DS_Store
@@ -76,8 +75,7 @@ debug.json
 **/common.js.map
 coverage.html
 
-# Peabody local service
-storage
-peabody
+# AI Dev Kit local service
+client
 configs/**
-assets/**
+peabody*/**

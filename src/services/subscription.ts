@@ -1,5 +1,5 @@
-import { inject, service } from '@sseiber/sprightly';
-import { Server } from 'hapi';
+import { inject, service } from 'spryly';
+import { Server } from '@hapi/hapi';
 
 @service('subscription')
 export class SubscriptionService {

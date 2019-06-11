@@ -14,3 +14,9 @@ export interface IFileUploadDetails {
     destFilePath: string;
     size: number;
 }
+
+export const HealthState = {
+    Good: 1,
+    Warning: 0,
+    Critical: 0
+};
