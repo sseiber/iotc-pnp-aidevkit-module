@@ -104,7 +104,9 @@ In order to run a new module on the Vision Ai Dev kit it is important to first r
     }
     ```
     This will tell the code where it should find the camera on your local network. Make sure your computer and the camera are on the same network. Since the Vision AI DevKit interface is REST we can run the web client/server experience locally on a development machine and still control the camera over the network.
-    * *NOTE:* This is an important distinction in the local development scenario. In this scenario the **host** device is your development PC and in addition there is the **actual** camera device. In a production scenario the (e.g. Docker container module deployed to the camera device) the **host** device is the camera device itself.
+    <br />
+    <br />
+    *NOTE:* This is an important distinction in the local development scenario. In this scenario the **host** device is your development PC and in addition there is the **actual** camera device. In a production scenario the (e.g. Docker container module deployed to the camera device) the **host** device is the camera device itself.
   * For the majority of the development scenarios this is a better developent cycle than building a Docker container and deploying over and over.
   * In order for the camera to run a video models we need to copy a video model to it. The Vision AI Dev device should have already been provisioned with a video model if you followed the setup instructions. But just to be sure you can check that the `/data/misc/camera` folder on the camera itself. Use the following command in a terminal window:
     ```
@@ -178,22 +180,21 @@ In order to run a new module on the Vision Ai Dev kit it is important to first r
 ## Publish your Docker container and deploy it from IoT Edge
 At this point you should be familiar with building the project and running the image on your Vision AI Dev Kit. This section will describe how to provision a deployment of your module through Azure IoT Hub.
   * Using the (Azure Portal)[www.portal.azure.com] online go to your Azure IoT Hub that was provisioned in your subscription during the Vision AI Dev Kit setup instructions. Feel free to create a new Azure IoT Hub if you wish.
-  <br />
-  *NOTE:* If you use a new Azure IoT Hub you will need to update the `device_connection_string` in the `\etc\iotedge\config.yaml` file to a new connection string and restart the Azure IoT Edge service on your device.
+  * *NOTE:* If you use a new Azure IoT Hub you will need to update the `device_connection_string` in the `/etc/iotedge/config.yaml` file to a new connection string and restart the Azure IoT Edge service on your device.
   * Select IoT Edge on the left pane, then select the IoT Edge Device tab.
   * You should see your Vision AI Dev Kit device. Select the device then select Set Modules at the top of the screen.
   * Add the details about you Docker container here:
     * Container Registry Settings
     * Under Deployment Modules slect +Add and select "IoT Edge Module"
     * On the right pain enter the following information:
-      * A descriptive name
-      * The full Docker container image uri (e.g. container-registry/image-name:version-tag)
-      * These environment variables:
-        | Name | Value |
-        | --- | --- |
-        | videoCaptureSource | rtcp |
-        <br />
-      * Container Create Options
+      <br />
+      - A descriptive name
+      - The full Docker container image uri (e.g. container-registry/image-name:version-tag)
+      - These environment variables:
+        ```
+        videoCaptureSource=rtsp
+        ```
+      - Container Create Options
         ```
         {
             "HostConfig": {
@@ -220,16 +221,16 @@ At this point you should be familiar with building the project and running the i
             }
         }
         ```
-      * Click Save and Next, Next, Submit
-      * In a few minutes your container should deploy to your Vision AI Dev Kit
+      - Click Save and Next, Next, Submit
+      - In a few minutes your container should deploy to your Vision AI Dev Kit
 
 ## Azure IoT Central
 
 This project includes support for connecting to [Azure IoT Central](https://azure.microsoft.com/en-us/services/iot-central/) and sending telemetry, state, events, and supports running commands sent from your IoT Central app.
 
   * Create an Azure IoT Central app
-    * [Click on this link to create an IoT Central App for the Vision AI Dev Kit](https://apps.azureiotcentral.com/create?appTemplate=0098b855-6bbd-49db-9945-d72edfd907ce)
-      * *Note:* The link above contains a special `appTemplate` parameter that ensures your new IoT Central app is provisioned with the template for the Vision AI Dev Kit module.
+    * [Click on this link to create an IoT Central App for the Vision AI Dev Kit](https://apps.azureiotcentral.com/create?appTemplate=0098b855-6bbd-49db-9945-d72edfd907ce)  
+      - *Note:* The link above contains a special `appTemplate` parameter that ensures your new IoT Central app is provisioned with the template for the Vision AI Dev Kit module.
     * You can create a Pay-As-You-Go instance or a Trial instance
   * Provision your camera with a Device Id and Device Key
     * This step requires you to create a Device SAS Key and you will need the primary access key from your Azure IoT Central app.  
@@ -262,17 +263,14 @@ This project includes support for connecting to [Azure IoT Central](https://azur
         ```
         adb copy ./peabody/storage/state.json /data/misc/storage
         ```
-      * Add the additional environment variables listed below to the Edge Module (for Azure IoT Hub deployments).
-        <br />
-        Note that your `template-id` and your `template-version` can be retrieved from you Azure IoT Central app (Select Device Explorer and just below the title you will see the `templateid/templateversion` along with a copy button).
-        | Name | Value |
-        | --- | --- |
-        | enableIoTCentralProvisioning | 1 |
-        | videoCaptureSource | rtsp |
-        | iotCentralScopeId | your-scope-id |
-        | iotCentralTemplateId | your-template-id |
-        | iotCentralTemplateVersion | your-template-version |
-        <br />
+      * Add the additional environment variables listed below to the Edge Module (for Azure IoT Hub deployments). Note that your `template-id` and your `template-version` can be retrieved from you Azure IoT Central app (Select Device Explorer and just below the title you will see the `templateid/templateversion` along with a copy button).
+        ```
+        enableIoTCentralProvisioning=1
+        videoCaptureSource=rtsp
+        iotCentralScopeId=your-scope-id
+        iotCentralTemplateId=your-template-id
+        iotCentralTemplateVersion=your-template-version
+        ```
       Using the `adb tool` you can examine the logs to verify that it has correctly provisioned with your Azure IoT Central App. You should see something like this:
         ```
         [06:28:02 GMT+0000], [log,startup,info] data:  > Machine: linux, 4 core, freemem=1050mb, totalmem=1828mb
