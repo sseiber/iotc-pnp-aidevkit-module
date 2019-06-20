@@ -3,6 +3,7 @@ import { Server } from '@hapi/hapi';
 import * as request from 'request';
 import * as _get from 'lodash.get';
 import * as crypto from 'crypto';
+import { SubscriptionService } from './subscription';
 import { LoggingService } from './logging';
 import { ConfigService } from './config';
 import { StateService } from './state';
@@ -10,6 +11,17 @@ import { sleep, bind } from '../utils';
 import { HealthState } from './serverTypes';
 import * as AzureIotDeviceMqtt from 'azure-iot-device-mqtt';
 import * as AzureIotDevice from 'azure-iot-device';
+
+export interface IIotcCameraProperties {
+    hdmiOutput: boolean;
+    wowzaPlayerLicense: string;
+    wowzaPlayerVideoSourceUrl: string;
+}
+
+export interface IIotcVisionProperties {
+    inferenceThreshold: number;
+    detectClass: string;
+}
 
 export const MessageType = {
     Telemetry: 'telemetry',
@@ -48,6 +60,8 @@ export const DeviceEvent = {
 
 export const DeviceSetting = {
     HdmiOutput: 'setting_hdmi_output',
+    WowzaPlayerLicense: 'setting_wowza_player_license',
+    WowzaPlayerVideoSourceUrl: 'setting_wowza_player_video_source_url',
     InferenceThreshold: 'setting_inference_threshold',
     DetectClass: 'setting_detect_class'
 };
@@ -93,6 +107,8 @@ const defaultIotCentralDpsEndpoint: string = 'https://global.azure-devices-provi
 const defaultIotCentralDpsRegistrationSuffix: string = '/register?api-version=###API_VERSION';
 const defaultIotCentralDpsOperationsSuffix: string = '/operations/###OPERATION_ID?api-version=###API_VERSION';
 const defaultIotCentralExpiryHours: string = '2';
+const defaultConfidenceThreshold: number = 70;
+const defaultDetectClass: string = 'person';
 
 @service('iotCentral')
 export class IoTCentralService {
@@ -108,7 +124,12 @@ export class IoTCentralService {
     @inject('state')
     private state: StateService;
 
+    @inject('subscription')
+    private subscription: SubscriptionService;
+
     private iotCentralScopeIdInternal: string = '';
+    private iotCentralTemplateIdInternal: string = '';
+    private iotCentralTemplateVersionInternal: string = '';
     private iotCentralDcmidInternal: string = '';
     private iotCentralDpsProvisionApiVersion: string = defaultIotCentralDpsProvisionApiVersion;
     private iotCentralDpsAssigningApiVersion: string = defaultIotCentralDpsAssigningApiVersion;
@@ -124,9 +145,26 @@ export class IoTCentralService {
     private iotcDeviceTwin: any = null;
     private iotcClientConnected: boolean = false;
     private iotcTelemetryThrottleTimer: number = Date.now();
+    private iotcCameraPropertiesInternal: IIotcCameraProperties = {
+        hdmiOutput: true,
+        wowzaPlayerLicense: '',
+        wowzaPlayerVideoSourceUrl: ''
+    };
+    private iotcVisionPropertiesInternal: IIotcVisionProperties = {
+        inferenceThreshold: defaultConfidenceThreshold,
+        detectClass: defaultDetectClass
+    };
 
     public get iotCentralScopeId() {
         return this.iotCentralScopeIdInternal;
+    }
+
+    public get iotCentralTemplateId() {
+        return this.iotCentralTemplateIdInternal;
+    }
+
+    public get iotCentralTemplateVersion() {
+        return this.iotCentralTemplateVersionInternal;
     }
 
     public get iotCentralDcmid() {
@@ -145,12 +183,22 @@ export class IoTCentralService {
         return this.iotCentralConnectionStatusInternal;
     }
 
+    public get iotcCameraProperties() {
+        return this.iotcCameraPropertiesInternal;
+    }
+
+    public get iotcVisionProperties() {
+        return this.iotcVisionPropertiesInternal;
+    }
+
     public async init(): Promise<void> {
         this.logger.log(['IoTCentral', 'info'], 'initialize');
 
         this.server.method({ name: 'iotCentral.connectToIoTCentral', method: this.connectToIoTCentral });
 
         this.iotCentralScopeIdInternal = this.config.get('iotCentralScopeId') || '';
+        this.iotCentralTemplateIdInternal = this.config.get('iotCentralTemplateId') || '';
+        this.iotCentralTemplateVersionInternal = this.config.get('iotCentralTemplateVersion') || '';
         this.iotCentralDcmidInternal = this.config.get('iotCentralDcmid') || '';
         this.iotCentralDpsProvisionApiVersion = this.config.get('iotCentralDpsProvisionApiVersion') || defaultIotCentralDpsProvisionApiVersion;
         this.iotCentralDpsAssigningApiVersion = this.config.get('iotCentralDpsAssigningApiVersion') || defaultIotCentralDpsAssigningApiVersion;
@@ -158,6 +206,8 @@ export class IoTCentralService {
         this.iotCentralDpsRegistrationSuffix = this.config.get('iotCentralDpsRegistrationSuffix') || defaultIotCentralDpsRegistrationSuffix;
         this.iotCentralDpsOperationsSuffix = this.config.get('iotCentralDpsOperationsSuffix') || defaultIotCentralDpsOperationsSuffix;
         this.iotCentralExpiryHours = this.config.get('iotCentralExpiryHours') || defaultIotCentralExpiryHours;
+        this.iotcCameraPropertiesInternal.wowzaPlayerLicense = this.config.get('cloudWowzaPlayerLicense') || '';
+        this.iotcCameraPropertiesInternal.wowzaPlayerVideoSourceUrl = this.config.get('cloudWowzaPlayerVideoSourceUrl') || '';
     }
 
     @bind
@@ -191,6 +241,9 @@ export class IoTCentralService {
             const expiry = (Date.now() - (SECONDS_PER_MINUTE * 5) + (SECONDS_PER_HOUR * Number(this.iotCentralExpiryHours)));
             const sr = `${this.iotCentralScopeId}%2fregistrations%2f${iotCentralState.deviceId}`;
             const sig = this.computDerivedSymmetricKey(iotCentralState.deviceKey, `${sr}\n${expiry}`);
+            const provisioningType = this.config.get('iotCentralProvisioningType') || 'pnp';
+
+            this.logger.log(['IoTCentralService', 'info'], `Device provisioning flow is: ${provisioningType}`);
 
             const options = {
                 method: 'PUT',
@@ -205,12 +258,16 @@ export class IoTCentralService {
                 },
                 body: {
                     registrationId: iotCentralState.deviceId,
-                    data: {
-                        '__iot:interfaces': {
-                            ModelRepositoryUri: this.iotCentralDcmid,
-                            CapabilityModelUri: this.iotCentralDcmid
+                    data: provisioningType === 'template'
+                        ? {
+                            iotcModelId: `${this.iotCentralTemplateId}/${this.iotCentralTemplateVersion}`
                         }
-                    }
+                        : {
+                            '__iot:interfaces': {
+                                ModelRepositoryUri: this.iotCentralDcmid,
+                                CapabilityModelUri: this.iotCentralDcmid
+                            }
+                        }
                 },
                 json: true
             };
@@ -413,12 +470,14 @@ export class IoTCentralService {
 
             switch (setting) {
                 case DeviceSetting.HdmiOutput:
-                    changedSettingResult = await (this.server.methods.camera as any).cameraSettingChange(setting, value);
+                case DeviceSetting.WowzaPlayerLicense:
+                case DeviceSetting.WowzaPlayerVideoSourceUrl:
+                    changedSettingResult = await this.cameraSettingChange(setting, value);
                     break;
 
                 case DeviceSetting.InferenceThreshold:
                 case DeviceSetting.DetectClass:
-                    changedSettingResult = await (this.server.methods.inferenceProcessor as any).inferenceSettingChange(setting, value);
+                    changedSettingResult = await this.visionSettingChange(setting, value);
                     break;
 
                 default:
@@ -439,6 +498,77 @@ export class IoTCentralService {
                 await this.updateDeviceProperties(patchedProperty);
             }
         }
+    }
+
+    @bind
+    private async cameraSettingChange(setting: string, value: any): Promise<any> {
+        this.logger.log(['IoTCentralService', 'info'], `Handle camera setting change for ${setting}: ${value}`);
+
+        const result = {
+            value,
+            status: 'completed'
+        };
+
+        switch (setting) {
+            case DeviceSetting.HdmiOutput:
+                this.iotcCameraPropertiesInternal.hdmiOutput = value;
+                result.value = await (this.server.methods.camera as any).switchHdmiOutput(value);
+                break;
+
+            case DeviceSetting.WowzaPlayerLicense:
+                this.iotcCameraPropertiesInternal.wowzaPlayerLicense = value;
+                break;
+
+            case DeviceSetting.WowzaPlayerVideoSourceUrl:
+                this.iotcCameraPropertiesInternal.wowzaPlayerVideoSourceUrl = value === 'Unknown' ? '' : value;
+                break;
+
+            default:
+                this.logger.log(['IoTCentralService', 'info'], `Unknown camera setting change request ${setting}`);
+                result.status = 'error';
+        }
+
+        if (!result.value) {
+            result.status = 'error';
+        }
+        else {
+            this.subscription.publishUpdateConfiguration();
+        }
+
+        return result;
+    }
+
+    @bind
+    private async visionSettingChange(setting: string, value: any): Promise<any> {
+        this.logger.log(['IoTCentralService', 'info'], `Handle vision setting change for ${setting}: ${value}`);
+
+        const result = {
+            value,
+            status: 'completed'
+        };
+
+        switch (setting) {
+            case DeviceSetting.InferenceThreshold:
+                this.iotcVisionPropertiesInternal.inferenceThreshold = value;
+                break;
+
+            case DeviceSetting.DetectClass:
+                this.iotcVisionPropertiesInternal.detectClass = value;
+                break;
+
+            default:
+                this.logger.log(['IoTCentralService', 'info'], `Unknown vision setting change request ${setting}`);
+                result.status = 'error';
+        }
+
+        if (!result.value) {
+            result.status = 'error';
+        }
+        else {
+            this.subscription.publishUpdateConfiguration();
+        }
+
+        return result;
     }
 
     private computDerivedSymmetricKey(secret: string, id: string): string {

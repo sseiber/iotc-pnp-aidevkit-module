@@ -9,17 +9,18 @@ import { platform as osPlatform } from 'os';
 import { ConfigService } from './config';
 import { LoggingService } from './logging';
 import { StateService } from './state';
+import { SubscriptionService } from './subscription';
 import { InferenceProcessorService } from '../services/inferenceProcessor';
 import { FileHandlerService } from './fileHandler';
 import { IoTCentralService, MessageType, DeviceTelemetry, DeviceState, DeviceEvent, DeviceSetting, DeviceProperty } from '../services/iotcentral';
 import { ICameraResult, HealthState } from './serverTypes';
 import { bind, sleep, forget } from '../utils';
 
-export const defaultresolutionSelectVal: number = 1;
-export const defaultencodeModeSelectVal: number = 1;
-export const defaultbitRateSelectVal: number = 3;
-export const defaultfpsSelectVal: number = 1;
-export const defaultCameraSettings = {
+const defaultresolutionSelectVal: number = 1;
+const defaultencodeModeSelectVal: number = 1;
+const defaultbitRateSelectVal: number = 3;
+const defaultfpsSelectVal: number = 1;
+const defaultCameraSettings = {
     resolutionVal: defaultresolutionSelectVal,
     encodeModeVal: defaultencodeModeSelectVal,
     bitRateVal: defaultbitRateSelectVal,
@@ -77,6 +78,9 @@ export class CameraService extends EventEmitter {
     @inject('state')
     private state: StateService;
 
+    @inject('subscription')
+    private subscription: SubscriptionService;
+
     @inject('inferenceProcessor')
     private inferenceProcessor: InferenceProcessorService;
 
@@ -103,8 +107,8 @@ export class CameraService extends EventEmitter {
         this.logger.log(['CameraService', 'info'], 'initialize');
 
         this.server.method({ name: 'camera.startCamera', method: this.startCamera });
+        this.server.method({ name: 'camera.switchHdmiOutput', method: this.switchHdmiOutput });
         this.server.method({ name: 'camera.switchVisionAiModel', method: this.handleSwitchVisionAiModel });
-        this.server.method({ name: 'camera.cameraSettingChange', method: this.handleCameraSettingChange });
 
         this.cameraUserName = this.config.get('cameraUsername') || defaultCameraUsername;
         this.cameraPassword = this.config.get('cameraPassword') || defaultCameraPassword;
@@ -161,6 +165,8 @@ export class CameraService extends EventEmitter {
             };
         }
         else {
+            this.subscription.publishCreateSession();
+
             await this.iotCentral.sendMeasurement(MessageType.Event, { [DeviceEvent.SessionLogin]: this.sessionToken });
 
             return {
@@ -211,6 +217,8 @@ export class CameraService extends EventEmitter {
             [DeviceState.Session]: 'Inactive'
         };
 
+        this.subscription.publishDestroySession();
+
         await this.iotCentral.sendMeasurement(MessageType.State, activeDeviceState);
 
         return {
@@ -242,8 +250,8 @@ export class CameraService extends EventEmitter {
                     modelFile: this.modelFile,
                     videoPreview: this.currentCameraSettings.videoPreview,
                     vamProcessing: this.currentCameraSettings.vamProcessing,
-                    wowzaPlayerLicense: this.config.get('wowzaPlayerLicense'),
-                    wowzaPlayerVideoSourceUrl: this.config.get('wowzaPlayerVideoSourceUrl').replace('###DEVICEID', this.state.iotCentral.deviceId)
+                    wowzaPlayerLicense: this.iotCentral.iotcCameraProperties.wowzaPlayerLicense || '',
+                    wowzaPlayerVideoSourceUrl: this.iotCentral.iotcCameraProperties.wowzaPlayerVideoSourceUrl || ''
                 },
                 iotcConfig: {
                     systemName: this.state.system.systemName,
@@ -252,6 +260,8 @@ export class CameraService extends EventEmitter {
                     deviceId: this.state.iotCentral.deviceId,
                     deviceKey: this.state.iotCentral.deviceKey,
                     scopeId: this.iotCentral.iotCentralScopeId,
+                    templateId: this.iotCentral.iotCentralTemplateId,
+                    templateVersion: this.iotCentral.iotCentralTemplateVersion,
                     dcmid: this.iotCentral.iotCentralDcmid,
                     iotCentralHubConnectionString: this.iotCentral.iotCentralHubConnectionString,
                     iotCentralProvisioningStatus: this.iotCentral.iotCentralProvisioningStatus,
@@ -386,34 +396,20 @@ export class CameraService extends EventEmitter {
     }
 
     @bind
-    private async handleCameraSettingChange(setting: string, value: any): Promise<any> {
-        this.logger.log(['CameraService', 'info'], `Handle setting change for ${setting}: ${value}`);
+    private async switchHdmiOutput(value: boolean): Promise<boolean> {
+        this.logger.log(['CameraService', 'info'], `Attempting to set Hdmi value to ${value}`);
 
-        const result = {
-            value,
-            status: 'completed'
-        };
+        if (this.currentCameraSettings.videoPreview !== value) {
+            this.currentCameraSettings.videoPreview = value;
 
-        switch (setting) {
-            case DeviceSetting.HdmiOutput: {
-                if (this.currentCameraSettings.videoPreview !== value) {
-                    this.currentCameraSettings.videoPreview = value;
+            const settingsResult = await this.setCameraSettings(this.currentCameraSettings);
 
-                    const settingsResult = await this.setCameraSettings(this.currentCameraSettings);
-                    result.status = settingsResult.status ? 'completed' : 'error';
-                }
+            this.logger.log(['CameraService', 'info'], `Setting Hdmi returned status: ${settingsResult.status}`);
 
-                result.value = this.currentCameraSettings.videoPreview;
-
-                break;
-            }
-
-            default:
-                this.logger.log(['CameraService', 'info'], `Unknown setting change request ${setting}`);
-                result.status = 'error';
+            return settingsResult.status;
         }
 
-        return result;
+        return true;
     }
 
     @bind
@@ -442,7 +438,7 @@ export class CameraService extends EventEmitter {
                 }
 
                 if (status === true) {
-                    this.server.publish('/api/v1/subscription/model', this.modelFile);
+                    this.subscription.publishModel(this.modelFile);
                     await this.iotCentral.sendMeasurement(MessageType.Event, { [DeviceEvent.VideoModelChange]: this.modelFile });
                 }
             }

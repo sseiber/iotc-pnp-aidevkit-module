@@ -22,7 +22,7 @@
                 "<node_internals>/**"
             ],
             "env": {
-                "NODE_ENV": "local",
+                "NODE_ENV": "iotctemplate",
                 "PORT": "9010",
                 "LOCAL_DEBUG": "1",
                 "DATAMISC_ROOT": "${workspaceFolder}/peabody"
