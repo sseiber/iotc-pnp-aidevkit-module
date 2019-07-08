@@ -95,7 +95,7 @@ export const DeviceCommand = {
 };
 
 export const DeviceCommandParams = {
-    VisionModelUrl: 'command_param_vision_model_url'
+    VisionModelUrl: 'command_param_vision_model_uri'
 };
 
 const SECONDS_PER_MINUTE: number = (60);

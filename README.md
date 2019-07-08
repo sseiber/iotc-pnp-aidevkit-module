@@ -43,8 +43,8 @@ The project includes a Dockerfile and scripts used to build the docker container
     * `npm i`
     * `npm start`
   * Build local service
-    * `clone https://github.com/sseiber/peabody-local-service`
-    * `cd peabody-local-service`
+    * `clone https://github.com/sseiber/iotc-pnp-aidevkit-module`
+    * `cd iotc-pnp-aidevkit-module`
     * `npm i`
     * Open VSCode on this folder. You can use the command:
         ```

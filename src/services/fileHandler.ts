@@ -27,7 +27,7 @@ const defaultFirmwareVersionPath: string = '/etc/version';
 const defaultBatteryLevelPath: string = '/sys/class/power_supply/battery/capacity';
 const defaultDockerApiVersion: string = '1.37';
 const defaultDockerSocket: string = '/var/run/docker.sock';
-const defaultDockerImageName: string = 'peabody-local-service';
+const defaultDockerImageName: string = 'iotc-pnp-aidevkit-module';
 
 @service('fileHandler')
 export class FileHandlerService {
