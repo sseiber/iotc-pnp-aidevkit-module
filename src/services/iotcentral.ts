@@ -390,10 +390,9 @@ export class IoTCentralService {
         if (((Date.now() - this.iotcTelemetryThrottleTimer) < 1000)) {
             return;
         }
+        this.iotcTelemetryThrottleTimer = Date.now();
 
         try {
-            this.iotcTelemetryThrottleTimer = Date.now();
-
             await this.sendMeasurement(MessageType.Telemetry, inferenceTelemetryData);
 
             await this.sendMeasurement(MessageType.Event, inferenceEventData);

@@ -20,14 +20,6 @@ const defaultresolutionSelectVal: number = 1;
 const defaultencodeModeSelectVal: number = 1;
 const defaultbitRateSelectVal: number = 3;
 const defaultfpsSelectVal: number = 1;
-const defaultCameraSettings = {
-    resolutionVal: defaultresolutionSelectVal,
-    encodeModeVal: defaultencodeModeSelectVal,
-    bitRateVal: defaultbitRateSelectVal,
-    fpsVal: defaultfpsSelectVal,
-    videoPreview: true,
-    vamProcessing: true
-};
 
 const defaultCameraUsername: string = 'admin';
 const defaultCameraPassword: string = 'admin';
@@ -99,9 +91,7 @@ export class CameraService extends EventEmitter {
     private rtspVideoUrl: string = '';
     private rtspVamUrl: string = '';
     private modelFile: string = '';
-    private currentCameraSettings = {
-        ...defaultCameraSettings
-    };
+    private currentCameraSettings: any;
 
     public async init(): Promise<void> {
         this.logger.log(['CameraService', 'info'], 'initialize');
@@ -114,6 +104,14 @@ export class CameraService extends EventEmitter {
         this.cameraPassword = this.config.get('cameraPassword') || defaultCameraPassword;
         this.rtspVideoPort = this.config.get('rtspVideoPort') || defaultRtspVideoPort;
         this.ipcPort = this.config.get('ipcPort') || defaultIpcPort;
+        this.currentCameraSettings = {
+            resolutionVal: Number(this.config.get('cameraResolutionVal')) || defaultresolutionSelectVal,
+            encodeModeVal: Number(this.config.get('cameraEncodeModeVal')) || defaultencodeModeSelectVal,
+            bitRateVal: Number(this.config.get('cameraBitRateVal')) || defaultbitRateSelectVal,
+            fpsVal: Number(this.config.get('cameraFpsVal')) || defaultfpsSelectVal,
+            videoPreview: true,
+            vamProcessing: true
+        };
 
         setInterval(() => {
             forget(this.checkHealthState);
