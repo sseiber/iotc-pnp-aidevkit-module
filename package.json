@@ -1,6 +1,6 @@
 {
-  "name": "peabody-local-service",
-  "version": "1.0.127",
+  "name": "iotc-pnp-aidevkit-module",
+  "version": "2.0.14",
   "description": "Local service for AI Dev Kit",
   "main": "index.js",
   "scripts": {
@@ -17,7 +17,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git@github.com:sseiber/peabody-local-service.git"
+    "url": "git@github.com:sseiber/iotc-pnp-aidevkit-module.git"
   },
   "dependencies": {
     "@hapi/boom": "^7.4.2",
@@ -63,15 +63,18 @@
   },
   "jest": {
     "rootDir": "./src/",
-    "transform": {
-      ".(ts|tsx)": "<rootDir>/../node_modules/ts-jest/preprocessor.js"
-    },
     "testRegex": "(/__tests__/.*|\\.(test|spec))\\.(ts|tsx)$",
     "moduleFileExtensions": [
       "ts",
       "tsx",
       "js",
       "json"
-    ]
+    ],
+    "transform": {
+      ".tsx?": "ts-jest"
+    },
+    "moduleNameMapper": {
+      "\\.(jpg|jpeg|png|gif|eot|otf|webp|svg|ttf|woff|woff2|mp4|webm|wav|mp3|m4a|aac|oga)$": "./__mocks__/fileMock.js"
+    }
   }
 }

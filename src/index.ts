@@ -55,8 +55,6 @@ async function start() {
         server.log(['startup', 'info'], `📷 Starting camera initialzation`);
         await (server.methods.camera as any).startCamera();
         server.log(['startup', 'info'], `📸 Finished camera initialization`);
-
-        server.publish(`/api/v1/subscription/up`, {});
     }
     catch (error) {
         // tslint:disable-next-line:no-console

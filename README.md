@@ -36,45 +36,51 @@ In order to run a new module on the Vision Ai Dev kit it is important to first r
 * Publish your Docker container and deploy it with Azure IoT Edge
 * Use the module with Azure IoT Central
 
-## Download the prebuilt Docker container
-* Open a shell on your Vision AI Dev Kit device using `adb shell`
-* Login to the public docker registry with `docker login`
-  * *Note:* This is assuming you have user account on `hub.docker.com`
-  * There is some disucssion in the communities regarding whether it is required to have a public docker account in order to download public images. Feel free to try the next step without first logging into Docker Hub to see if it works.
-* Run the following command to start the Docker image:
-    ```
-    docker run \
-        -it \
-        --rm \
-        -e videoCaptureSource=rtsp \
-        --network=host \
-        -v /run/systemd:/run/systemd \
-        -v /var/run/docker.sock:/var/run/docker.sock \
-        -v /data/misc:/data/misc \
-        -v /etc/version:/etc/version \
-        -v /sys/class/power_supply:/sys/class/power_supply \
-        sseiber/peabody-local-service:1.0.127 \
-        node ./dist/index.js
-    ```
-* Assuming the image downloads you should output similar to this. This means the Docker image was downloaded and began to run interactively in your shell.
-    ```
-    [05:59:36 GMT-0700], [log,[InferenceProcessor, info]] data: Inference: id:2 "person" 88%
-    [05:59:37 GMT-0700], [log,[InferenceProcessor, info]] data: Inference: id:2 "person" 94%
-    [05:59:39 GMT-0700], [log,[InferenceProcessor, info]] data: Inference: id:2 "person" 90%
-    [05:59:41 GMT-0700], [log,[InferenceProcessor, info]] data: Inference: id:2 "person" 89%
-    [05:59:43 GMT-0700], [log,[InferenceProcessor, info]] data: Inference: id:2 "person" 90%
-    ```
-* Now that the image is running you can access the Web client UI in the camera. On your PC open a browser to the following url:
-  ```
-  http://<camera-ip-address>:9010/client
-  ```
-  * *Note:* This assumes your PC are on the same local network as the Vision AI Dev Kit.
-* You should see the Web client UI:
-  <img src="./assets/webclient.png" width="800">
-* To stop the running container you'll need to open another shell window and list the running containers with `docker ps`. Then select the docker `CONTAINER ID` for the `peabody-local-service` image and run the command:
-  ```
-  docker stop <container-id>
-  ```
+### 1. Local development
+
+#### &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Environment installation
+  * Build the local web client and start the web dev server
+    * `git clone https://github.com/sseiber/peabody-local-client`
+    * `cd peabody-local-client`
+    * `npm i`
+    * `npm start`
+  * Build local service
+    * `clone https://github.com/sseiber/iotc-pnp-aidevkit-module`
+    * `cd iotc-pnp-aidevkit-module`
+    * `npm i`
+    * Open VSCode on this folder. You can use the command:
+        ```
+        code .
+        ```
+    * In the `./configs/local.json` file update the `cameraIpAddress` field using your own camera's IP address:  
+        ```
+        {
+            "cameraIpAddress": "<your camera ip address>",
+            "hostIpAddress": "localhost"
+        }
+        ```
+        * This will tell the code where it should find the camera on your local network. Make sure your computer and the camera are on the same network. Since the Vision AI DevKit interface is REST we can run the web client/server experience locally on a development machine and still control the camera over the network. This is a better developent cycle than building a Docker container and deploying over and over.
+    * In order for the camera to run a video models we need to copy a video model to it. The Vision AI Dev device should already have been provisioned with a video model if you followed the setup instructions. But just to be sure you can check that the `/data/misc/camera` folder on the camera itself. Use the following command in a terminal window:
+        ```
+        adb shell ls /data/misc/camera
+        ```
+        You should see files that look something like this:
+        ```
+        aecWarmStartCamera_0.txt
+        labels.txt
+        model.dlc
+        va-snpe-engine-library_config.json
+        ```
+    * Press F5 (to start with the debugger)
+    * You should see output that looks like this:
+       ```
+       [05:59:36 GMT-0700], [log,[InferenceProcessor, info]] data: Inference: id:2 "person" 88%
+       [05:59:37 GMT-0700], [log,[InferenceProcessor, info]] data: Inference: id:2 "person" 94%
+       [05:59:39 GMT-0700], [log,[InferenceProcessor, info]] data: Inference: id:2 "person" 90%
+       [05:59:41 GMT-0700], [log,[InferenceProcessor, info]] data: Inference: id:2 "person" 89%
+       [05:59:43 GMT-0700], [log,[InferenceProcessor, info]] data: Inference: id:2 "person" 90%
+       ```
+    * You can also use the web client by navigating your browser to `http://<camera-ip-address>:9010/client`. You should see a web client that looks like this:
 
 ## Local development
 * Build the local web client and start the web dev server

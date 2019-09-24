@@ -1,15 +1,15 @@
 import { service, inject } from 'spryly';
 import { Server } from '@hapi/hapi';
 import { LoggingService } from './logging';
-import { ConfigService } from './config';
 import { SubscriptionService } from '../services/subscription';
 import { DataStreamController } from '../services/dataStreamProcessor';
 import { VideoStreamController } from '../services/videoStreamProcessor';
-import { IoTCentralService, DeviceEvent, DeviceSetting, DeviceTelemetry } from '../services/iotcentral';
+import { IoTCentralService, DeviceEvent, DeviceTelemetry } from '../services/iotcentral';
 import { sleep, bind } from '../utils';
 import * as _get from 'lodash.get';
 
-const defaultConfidenceThreshold: number = 70;
+const defaultInferenceThreshold: number = 70;
+const defaultDetectClass: string = 'person';
 
 @service('inferenceProcessor')
 export class InferenceProcessorService {
@@ -18,9 +18,6 @@ export class InferenceProcessorService {
 
     @inject('logger')
     private logger: LoggingService;
-
-    @inject('config')
-    private config: ConfigService;
 
     @inject('subscription')
     private subscription: SubscriptionService;
@@ -36,17 +33,17 @@ export class InferenceProcessorService {
 
     private inferenceCount: number = 0;
     private lastImageData: Buffer = null;
-    private confidenceThreshold: number = defaultConfidenceThreshold;
-    private detectClass: string = 'person';
+    private inferenceThreshold: number = defaultInferenceThreshold;
+    private detectClass: string = defaultDetectClass;
 
     public async init(): Promise<void> {
         this.logger.log(['InferenceProcessor', 'info'], 'initialize');
 
-        this.server.method({ name: 'inferenceProcessor.inferenceSettingChange', method: this.handleInferenceSettingChange });
         this.server.method({ name: 'inferenceProcessor.dataInference', method: this.handleDataInference });
         this.server.method({ name: 'inferenceProcessor.videoFrame', method: this.handleVideoFrame });
 
-        this.confidenceThreshold = Number(this.config.get('confidenceThreshold')) || defaultConfidenceThreshold;
+        this.inferenceThreshold = Number(this.iotCentral.iotcVisionProperties.inferenceThreshold) || defaultInferenceThreshold;
+        this.detectClass = this.iotCentral.iotcVisionProperties.detectClass || defaultDetectClass;
     }
 
     public async startInferenceProcessor(rtspDataUrl: string, rtspVideoUrl: string) {
@@ -80,7 +77,7 @@ export class InferenceProcessorService {
 
             const publishedInferences = inferences.reduce((publishedItems, inferenceItem) => {
                 const confidence = Number(_get(inferenceItem, 'confidence') || 0);
-                if (_get(inferenceItem, 'display_name') !== 'Negative' && confidence >= this.confidenceThreshold) {
+                if (_get(inferenceItem, 'display_name') !== 'Negative' && confidence >= this.inferenceThreshold) {
                     publishedItems.push({
                         count: this.inferenceCount++,
                         ...inferenceItem
@@ -111,32 +108,6 @@ export class InferenceProcessorService {
         ];
     }
 
-    @bind
-    private async handleInferenceSettingChange(setting: string, value: any): Promise<any> {
-        this.logger.log(['InferenceProcessor', 'info'], `Handle setting change for ${setting}: ${value}`);
-
-        const result = {
-            value,
-            status: 'completed'
-        };
-
-        switch (setting) {
-            case DeviceSetting.InferenceThreshold:
-                this.confidenceThreshold = value;
-                break;
-
-            case DeviceSetting.DetectClass:
-                this.detectClass = value;
-                break;
-
-            default:
-                this.logger.log(['InferenceProcessor', 'info'], `Unknown setting change request ${setting}`);
-                result.status = 'error';
-        }
-
-        return result;
-    }
-
     private async publishInference(inference): Promise<void> {
         const trackTimeout = Date.now();
         this.lastImageData = null;
@@ -157,7 +128,7 @@ export class InferenceProcessorService {
                 detectClassCount++;
             }
 
-            return className || 'Unkonwn';
+            return className || 'Unknown';
         });
 
         await this.iotCentral.sendInferenceData(
