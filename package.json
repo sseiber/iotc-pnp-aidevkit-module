@@ -1,6 +1,6 @@
 {
   "name": "iotc-pnp-aidevkit-module",
-  "version": "2.0.17",
+  "version": "3.0.1",
   "description": "Local service for AI Dev Kit",
   "main": "index.js",
   "scripts": {
@@ -44,18 +44,17 @@
     "pjson": "^1.0.9",
     "query-string": "^6.8.3",
     "request": "^2.88.0",
-    "spryly": "^1.0.17",
+    "spryly": "^1.0.19",
     "uuid": "^3.3.3",
     "xml2js": "^0.4.22"
   },
   "devDependencies": {
-    "@types/bell": "^9.3.2",
-    "@types/hapi": "^18.0.2",
-    "@types/inert": "^5.1.2",
-    "@types/jest": "^24.0.18",
+    "@types/hapi__hapi": "*",
+    "@types/hapi__inert": "*",
+    "@types/hapi__nes": "*",
+    "@types/jest": "*",
     "@types/nconf": "0.10.0",
-    "@types/nes": "^7.0.6",
-    "@types/node": "^12.7.8",
+    "@types/node": "*",
     "@types/request": "^2.48.3",
     "jest": "^24.9.0",
     "ts-jest": "^24.1.0",
