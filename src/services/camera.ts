@@ -11,10 +11,22 @@ import { LoggingService } from './logging';
 import { StateService } from './state';
 import { SubscriptionService } from './subscription';
 import { InferenceProcessorService } from '../services/inferenceProcessor';
-import { FileHandlerService } from './fileHandler';
-import { IoTCentralService, MessageType, DeviceTelemetry, DeviceState, DeviceEvent, DeviceSetting, DeviceProperty } from '../services/iotcentral';
-import { ICameraResult, HealthState } from './serverTypes';
+import { DeviceService } from './device';
+import {
+    IoTCentralService,
+    PeabodyDeviceSessionState,
+    PeabodyDeviceInferenceProcessorState,
+    PeabodyDeviceFieldIds
+} from '../services/iotcentral';
 import { bind, sleep, forget } from '../utils';
+import { HealthState } from './health';
+
+export interface ICameraResult {
+    status: boolean;
+    title: string;
+    message: string;
+    body?: any;
+}
 
 const defaultresolutionSelectVal: number = 1;
 const defaultencodeModeSelectVal: number = 1;
@@ -64,8 +76,8 @@ export class CameraService extends EventEmitter {
     @inject('logger')
     private logger: LoggingService;
 
-    @inject('fileHandler')
-    private fileHandler: FileHandlerService;
+    @inject('device')
+    private device: DeviceService;
 
     @inject('state')
     private state: StateService;
@@ -112,10 +124,6 @@ export class CameraService extends EventEmitter {
             videoPreview: true,
             vamProcessing: true
         };
-
-        setInterval(() => {
-            forget(this.checkHealthState);
-        }, (1000 * 15));
     }
 
     @bind
@@ -137,8 +145,8 @@ export class CameraService extends EventEmitter {
 
             status = await this.ipcLogin();
             if (status === false) {
-                // await (this.server.methods.fileHandler as any).restartDevice(`ipcCameraInterface:ipcLogin`);
-                await (this.server.methods.fileHandler as any).restartQmmfServices(`ipcCameraInterface:ipcLogin`);
+                // await (this.server.methods.device as any).restartDevice(`ipcCameraInterface:ipcLogin`);
+                await (this.server.methods.device as any).restartQmmfServices(`ipcCameraInterface:ipcLogin`);
 
                 status = await this.ipcLogin();
             }
@@ -165,7 +173,7 @@ export class CameraService extends EventEmitter {
         else {
             this.subscription.publishCreateSession();
 
-            await this.iotCentral.sendMeasurement(MessageType.Event, { [DeviceEvent.SessionLogin]: this.sessionToken });
+            await this.iotCentral.sendMeasurement({ [PeabodyDeviceFieldIds.Event.SessionLogin]: this.sessionToken });
 
             return {
                 ...this.getConfiguration(),
@@ -191,10 +199,10 @@ export class CameraService extends EventEmitter {
 
                 if (status === false) {
                     this.logger.log(['CameraService', 'warning'], `Restarting Qmmf services`);
-                    await (this.server.methods.fileHandler as any).restartQmmfServices(`CameraService:destroyCameraSession`);
+                    await (this.server.methods.device as any).restartQmmfServices(`CameraService:destroyCameraSession`);
                 }
 
-                await this.iotCentral.sendMeasurement(MessageType.Event, { [DeviceEvent.SessionLogout]: this.sessionToken });
+                await this.iotCentral.sendMeasurement({ [PeabodyDeviceFieldIds.Event.SessionLogout]: this.sessionToken });
             }
 
             status = true;
@@ -209,15 +217,13 @@ export class CameraService extends EventEmitter {
         this.rtspVideoUrl = '';
         this.rtspVamUrl = '';
 
-        const activeDeviceState = {
-            [DeviceSetting.HdmiOutput]: 0,
-            [DeviceState.InferenceProcessor]: 'Off',
-            [DeviceState.Session]: 'Inactive'
-        };
-
         this.subscription.publishDestroySession();
 
-        await this.iotCentral.sendMeasurement(MessageType.State, activeDeviceState);
+        await this.iotCentral.sendMeasurement({
+            [PeabodyDeviceFieldIds.Setting.HdmiOutput]: 0,
+            [PeabodyDeviceFieldIds.State.InferenceProcessor]: PeabodyDeviceInferenceProcessorState.Inactive,
+            [PeabodyDeviceFieldIds.State.Session]: PeabodyDeviceSessionState.Inactive
+        });
 
         return {
             ...this.getConfiguration(),
@@ -255,15 +261,8 @@ export class CameraService extends EventEmitter {
                     systemName: this.state.system.systemName,
                     systemId: this.state.system.systemId,
                     appUrl: this.state.iotCentral.appUrl,
-                    deviceId: this.state.iotCentral.deviceId,
-                    deviceKey: this.state.iotCentral.deviceKey,
-                    scopeId: this.iotCentral.iotCentralScopeId,
-                    templateId: this.iotCentral.iotCentralTemplateId,
-                    templateVersion: this.iotCentral.iotCentralTemplateVersion,
-                    dcmid: this.iotCentral.iotCentralDcmid,
-                    iotCentralHubConnectionString: this.iotCentral.iotCentralHubConnectionString,
-                    iotCentralProvisioningStatus: this.iotCentral.iotCentralProvisioningStatus,
-                    iotCentralConnectionStatus: this.iotCentral.iotCentralConnectionStatus
+                    deviceId: this.iotCentral.iotcDeviceId,
+                    moduleId: this.iotCentral.iotcModuleId
                 }
             }
         };
@@ -354,41 +353,41 @@ export class CameraService extends EventEmitter {
         const result = await this.destroyCameraSession();
 
         if (resetAction === 'VAM') {
-            forget(this.server.methods.fileHandler.restartQmmfServices, 'CameraService:resetDevice');
+            forget((this.server.methods.device as any).restartQmmfServices, 'CameraService:resetDevice');
         }
         else if (resetAction === 'DEVICE') {
-            forget(this.server.methods.fileHandler.restartDevice, 'CameraService:resetDevice');
+            forget((this.server.methods.device as any).restartDevice, 'CameraService:resetDevice');
         }
 
         return result;
     }
 
     @bind
-    public async checkHealthState(): Promise<number> {
+    public async getHealth(): Promise<number> {
         const inferenceProcessorHealth = await this.inferenceProcessor.getHealth();
         const iotCentralHealth = await this.iotCentral.getHealth();
-        const fileHandlerHealth = await this.fileHandler.getHealth();
+        const deviceServiceHealth = await this.device.getHealth();
 
         if (inferenceProcessorHealth[0] < HealthState.Good
             || inferenceProcessorHealth[1] < HealthState.Good
             || iotCentralHealth < HealthState.Good
-            || fileHandlerHealth < HealthState.Good) {
+            || deviceServiceHealth < HealthState.Good) {
 
             this.logger.log(['CameraService', 'info'], `Health check watch: `
-                + `ds:${inferenceProcessorHealth[0]} `
-                + `dv:${inferenceProcessorHealth[1]} `
+                + `dat:${inferenceProcessorHealth[0]} `
+                + `vid:${inferenceProcessorHealth[1]} `
                 + `iot:${iotCentralHealth} `
-                + `file:${fileHandlerHealth}`);
+                + `dev:${deviceServiceHealth}`);
 
-            await (this.server.methods.fileHandler as any).restartDevice('CameraService:checkHealthState');
-            // await (this.server.methods.fileHandler as any).restartQmmfServices('CameraService:checkHealthState');
+            await (this.server.methods.device as any).restartDevice('CameraService:checkHealthState');
+            // await (this.server.methods.device as any).restartQmmfServices('CameraService:checkHealthState');
 
             return HealthState.Critical;
         }
 
-        await this.iotCentral.sendMeasurement(
-            MessageType.Telemetry,
-            { [DeviceTelemetry.CameraSystemHeartbeat]: inferenceProcessorHealth[0] + inferenceProcessorHealth[1] + iotCentralHealth + fileHandlerHealth });
+        await this.iotCentral.sendMeasurement({
+            [PeabodyDeviceFieldIds.Telemetry.CameraSystemHeartbeat]: inferenceProcessorHealth[0] + inferenceProcessorHealth[1] + iotCentralHealth + deviceServiceHealth
+        });
 
         return HealthState.Good;
     }
@@ -418,26 +417,26 @@ export class CameraService extends EventEmitter {
             await this.destroyCameraSession();
 
             const fileName = fileInfo.type === 'multipart'
-                ? await this.fileHandler.saveMultiPartFormModelPackage(fileInfo.file)
-                : await this.fileHandler.saveUrlModelPackage(fileInfo.fileUrl);
+                ? await this.device.saveMultiPartFormModelPackage(fileInfo.file)
+                : await this.device.saveUrlModelPackage(fileInfo.fileUrl);
 
             if (fileName) {
-                status = await this.fileHandler.extractAndVerifyModelFiles(fileName);
+                status = await this.device.extractAndVerifyModelFiles(fileName);
 
                 if (status === true) {
-                    status = await this.fileHandler.switchVisionAiModelFiles(fileName);
+                    status = await this.device.switchVisionAiModelFiles(fileName);
 
-                    const dlcFile = await this.fileHandler.ensureModelFilesExist(this.fileHandler.currentModelFolderPath);
+                    const dlcFile = await this.device.ensureModelFilesExist(this.device.currentModelFolderPath);
                     if (dlcFile) {
                         this.modelFile = dlcFile;
 
-                        await this.iotCentral.updateDeviceProperties({ [DeviceProperty.VideoModelName]: this.modelFile });
+                        await this.iotCentral.updateDeviceProperties({ [PeabodyDeviceFieldIds.Property.VideoModelName]: this.modelFile });
                     }
                 }
 
                 if (status === true) {
                     this.subscription.publishModel(this.modelFile);
-                    await this.iotCentral.sendMeasurement(MessageType.Event, { [DeviceEvent.VideoModelChange]: this.modelFile });
+                    await this.iotCentral.sendMeasurement({ [PeabodyDeviceFieldIds.Event.VideoModelChange]: this.modelFile });
                 }
             }
 
@@ -530,21 +529,19 @@ export class CameraService extends EventEmitter {
 
             if (result === true) {
                 const activeDeviceProperties = {
-                    [DeviceProperty.IpAddress]: this.ipAddresses.cameraIpAddress,
-                    [DeviceProperty.RtspVideoUrl]: this.sessionToken ? this.rtspVideoUrl : '',
-                    [DeviceProperty.Resolution]: this.sessionToken ? resolutions[this.currentCameraSettings.resolutionVal] : '',
-                    [DeviceProperty.Encoder]: this.sessionToken ? encoders[this.currentCameraSettings.encodeModeVal] : '',
-                    [DeviceProperty.Bitrate]: this.sessionToken ? bitRates[this.currentCameraSettings.bitRateVal] : '',
-                    [DeviceProperty.Fps]: this.sessionToken ? frameRates[this.currentCameraSettings.fpsVal] : ''
+                    [PeabodyDeviceFieldIds.Property.IpAddress]: this.ipAddresses.cameraIpAddress,
+                    [PeabodyDeviceFieldIds.Property.RtspVideoUrl]: this.sessionToken ? this.rtspVideoUrl : '',
+                    [PeabodyDeviceFieldIds.Property.Resolution]: this.sessionToken ? resolutions[this.currentCameraSettings.resolutionVal] : '',
+                    [PeabodyDeviceFieldIds.Property.Encoder]: this.sessionToken ? encoders[this.currentCameraSettings.encodeModeVal] : '',
+                    [PeabodyDeviceFieldIds.Property.Bitrate]: this.sessionToken ? bitRates[this.currentCameraSettings.bitRateVal] : '',
+                    [PeabodyDeviceFieldIds.Property.Fps]: this.sessionToken ? frameRates[this.currentCameraSettings.fpsVal] : ''
                 };
 
                 await this.iotCentral.updateDeviceProperties(activeDeviceProperties);
 
-                const activeDeviceState = {
-                    [DeviceSetting.HdmiOutput]: this.currentCameraSettings.videoPreview ? 1 : 0
-                };
-
-                await this.iotCentral.sendMeasurement(MessageType.State, activeDeviceState);
+                await this.iotCentral.sendMeasurement({
+                    [PeabodyDeviceFieldIds.Setting.HdmiOutput]: this.currentCameraSettings.videoPreview ? 1 : 0
+                });
             }
 
             return result;
@@ -560,7 +557,7 @@ export class CameraService extends EventEmitter {
         try {
             let result = false;
 
-            const dlcFile = await this.fileHandler.ensureModelFilesExist(this.fileHandler.currentModelFolderPath);
+            const dlcFile = await this.device.ensureModelFilesExist(this.device.currentModelFolderPath);
             if (dlcFile) {
                 this.modelFile = dlcFile;
 
@@ -588,15 +585,15 @@ export class CameraService extends EventEmitter {
 
                 if (result === true) {
                     await this.iotCentral.updateDeviceProperties({
-                        [DeviceProperty.VideoModelName]: this.modelFile
+                        [PeabodyDeviceFieldIds.Property.VideoModelName]: this.modelFile
                     });
 
-                    const activeDeviceState = {
-                        [DeviceState.InferenceProcessor]: this.currentCameraSettings.vamProcessing ? 'On' : 'Off',
-                        [DeviceState.Session]: this.sessionToken ? 'Active' : 'Inactive'
-                    };
-
-                    await this.iotCentral.sendMeasurement(MessageType.State, activeDeviceState);
+                    await this.iotCentral.sendMeasurement({
+                        [PeabodyDeviceFieldIds.State.InferenceProcessor]: this.currentCameraSettings.vamProcessing
+                            ? PeabodyDeviceInferenceProcessorState.Active
+                            : PeabodyDeviceInferenceProcessorState.Inactive,
+                        [PeabodyDeviceFieldIds.State.Session]: this.sessionToken ? PeabodyDeviceSessionState.Active : PeabodyDeviceSessionState.Inactive
+                    });
                 }
             }
 

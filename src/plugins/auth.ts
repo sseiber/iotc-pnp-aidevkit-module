@@ -2,8 +2,8 @@ import { HapiPlugin, inject } from 'spryly';
 import { Server } from '@hapi/hapi';
 import { LoggingService } from '../services/logging';
 import { AuthService } from '../services/auth';
-import * as HapiAuthJwt from './jwtAuth';
-import * as LocalNetworkAuthPlugin from './localNetworkAuth';
+import * as HapiAuthJwt from 'hapi-auth-jwt2';
+import { LocalNetworkAuthPlugin } from './localNetworkAuth';
 
 export class AuthPlugin implements HapiPlugin {
     @inject('logger')
@@ -14,7 +14,7 @@ export class AuthPlugin implements HapiPlugin {
 
     public async register(server: Server) {
         try {
-            await server.register([HapiAuthJwt, LocalNetworkAuthPlugin]);
+            await server.register([ HapiAuthJwt, LocalNetworkAuthPlugin ]);
 
             server.auth.strategy(
                 'client-jwt',

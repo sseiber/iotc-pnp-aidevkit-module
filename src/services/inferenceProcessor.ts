@@ -4,7 +4,10 @@ import { LoggingService } from './logging';
 import { SubscriptionService } from '../services/subscription';
 import { DataStreamController } from '../services/dataStreamProcessor';
 import { VideoStreamController } from '../services/videoStreamProcessor';
-import { IoTCentralService, DeviceEvent, DeviceTelemetry } from '../services/iotcentral';
+import {
+    IoTCentralService,
+    PeabodyDeviceFieldIds
+} from '../services/iotcentral';
 import { sleep, bind } from '../utils';
 import * as _get from 'lodash.get';
 
@@ -133,11 +136,9 @@ export class InferenceProcessorService {
 
         await this.iotCentral.sendInferenceData(
             {
-                [DeviceTelemetry.AllDetections]: inference.inferences.length,
-                [DeviceTelemetry.Detections]: detectClassCount
-            },
-            {
-                [DeviceEvent.Inference]: classes.join(', ')
+                [PeabodyDeviceFieldIds.Telemetry.AllDetections]: inference.inferences.length,
+                [PeabodyDeviceFieldIds.Telemetry.Detections]: detectClassCount,
+                [PeabodyDeviceFieldIds.Event.Inference]: classes.join(', ')
             }
         );
     }

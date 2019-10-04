@@ -1,16 +1,39 @@
 import { service, inject } from 'spryly';
 import { Server } from '@hapi/hapi';
-import * as request from 'request';
 import * as _get from 'lodash.get';
-import * as crypto from 'crypto';
+import {
+    arch as osArch,
+    platform as osPlatform,
+    release as osRelease,
+    cpus as osCpus,
+    totalmem as osTotalMem,
+    freemem as osFreeMem,
+    loadavg as osLoadAvg
+} from 'os';
+import { promisify } from 'util';
+import { exec } from 'child_process';
+import * as fse from 'fs-extra';
 import { SubscriptionService } from './subscription';
 import { LoggingService } from './logging';
 import { ConfigService } from './config';
 import { StateService } from './state';
-import { sleep, bind } from '../utils';
-import { HealthState } from './serverTypes';
-import * as AzureIotDeviceMqtt from 'azure-iot-device-mqtt';
-import * as AzureIotDevice from 'azure-iot-device';
+import { bind, forget, defer } from '../utils';
+import { HealthState } from './health';
+import { Mqtt } from 'azure-iot-device-mqtt';
+import {
+    ModuleClient,
+    Message,
+    DeviceMethodRequest,
+    DeviceMethodResponse
+} from 'azure-iot-device';
+
+export interface ISystemProperties {
+    cpuModel: string;
+    cpuCores: number;
+    cpuUsage: number;
+    totalMemory: number;
+    usedMemory: number;
+}
 
 export interface IIotcCameraProperties {
     hdmiOutput: boolean;
@@ -23,62 +46,84 @@ export interface IIotcVisionProperties {
     detectClass: string;
 }
 
-export const MessageType = {
-    Telemetry: 'telemetry',
-    State: 'state',
-    Event: 'event',
-    Setting: 'setting'
+export const IoTCentralDeviceFieldIds = {
+    Properties: {
+        Manufacturer: 'manufacturer',
+        Model: 'model',
+        SwVersion: 'swVersion',
+        OsName: 'osName',
+        ProcessorArchitecture: 'processorArchitecture',
+        ProcessorManufacturer: 'processorManufacturer',
+        TotalStorage: 'totalStorage',
+        TotalMemory: 'totalMemory'
+    }
 };
 
-export const DeviceTelemetry = {
-    CameraSystemHeartbeat: 'telemetry_camera_system_heartbeat',
-    Detections: 'telemetry_detection_count',
-    AllDetections: 'telemetry_all_detections_count',
-    BatteryLevel: 'telemetry_battery_level'
-};
+export enum PeabodyDeviceInferenceProcessorState {
+    Inactive = 'inactive',
+    Active = 'active'
+}
 
-export const DeviceState = {
-    InferenceProcessor: 'state_inference_processor',
-    Session: 'state_session'
-};
+export enum PeabodyDeviceSessionState {
+    Inactive = 'inactive',
+    Active = 'active'
+}
 
-export const DeviceEvent = {
-    SessionLogin: 'event_session_login',
-    SessionLogout: 'event_session_logout',
-    DataStreamProcessingStarted: 'event_datastream_processing_started',
-    DataStreamProcessingStopped: 'event_datastream_processing_stopped',
-    DataStreamProcessingError: 'event_datastream_processing_error',
-    VideoStreamProcessingStarted: 'event_videostream_processing_started',
-    VideoStreamProcessingStopped: 'event_videostream_processing_stopped',
-    VideoStreamProcessingError: 'event_videostream_processing_error',
-    VideoModelChange: 'event_video_model_change',
-    DeviceRestart: 'event_device_restart',
-    QmmfRestart: 'event_qmmf_restart',
-    ImageProvisionComplete: 'event_image_provision_complete',
-    Inference: 'event_inference'
-};
+export enum DeviceCommandParams {
+    VisionModelUrl = 'cmParamVisionModelUrl'
+}
 
-export const DeviceSetting = {
-    HdmiOutput: 'setting_hdmi_output',
-    WowzaPlayerLicense: 'setting_wowza_player_license',
-    WowzaPlayerVideoSourceUrl: 'setting_wowza_player_video_source_url',
-    InferenceThreshold: 'setting_inference_threshold',
-    DetectClass: 'setting_detect_class'
-};
-
-export const DeviceProperty = {
-    IpAddress: 'prop_ip_address',
-    RtspVideoUrl: 'prop_rtsp_video_url',
-    IoTCentralConnectionStatus: 'prop_iotc_connection_status',
-    Bitrate: 'prop_bitrate',
-    Encoder: 'prop_encoder',
-    Fps: 'prop_fps',
-    Resolution: 'prop_resolution',
-    ImageVersion: 'prop_image_version',
-    ImageStatus: 'prop_image_provision_status',
-    VideoModelName: 'prop_video_model_name',
-    FirmwareVersion: 'prop_firmware_version',
-    BatteryLevel: 'prop_battery_level'
+export const PeabodyDeviceFieldIds = {
+    Telemetry: {
+        CameraSystemHeartbeat: 'tlCameraSystemHeartbeat',
+        Detections: 'tlDetectionCount',
+        AllDetections: 'tlAllDetectionsCount',
+        BatteryLevel: 'tlBatteryLevel'
+    },
+    State: {
+        InferenceProcessor: 'stInferenceProcessor',
+        Session: 'stSession'
+    },
+    Event: {
+        SessionLogin: 'evSessionLogin',
+        SessionLogout: 'evSessionLogout',
+        DataStreamProcessingStarted: 'evDataStreamProcessingStarted',
+        DataStreamProcessingStopped: 'evDataStreamProcessingStopped',
+        DataStreamProcessingError: 'evDataStreamProcessingError',
+        VideoStreamProcessingStarted: 'evVideoStreamProcessingStarted',
+        VideoStreamProcessingStopped: 'evVideoStreamProcessingStopped',
+        VideoStreamProcessingError: 'evVideoStreamProcessingError',
+        VideoModelChange: 'evVideoModelChange',
+        DeviceRestart: 'evDeviceRestart',
+        QmmfRestart: 'evQmmfRestart',
+        ImageProvisionComplete: 'evImageProvisionComplete',
+        Inference: 'evInference'
+    },
+    Setting: {
+        HdmiOutput: 'wpHdmiOutput',
+        InferenceThreshold: 'wpInferenceThreshold',
+        DetectClass: 'wpDetectClass',
+        WowzaPlayerLicense: 'wpWowzaPlayerLicense',
+        WowzaPlayerVideoSourceUrl: 'wpWowzaPlayerVideoSourceUrl'
+    },
+    Property: {
+        IpAddress: 'rpIpAddress',
+        RtspVideoUrl: 'rpRtspVideoUrl',
+        Bitrate: 'rpBitrate',
+        Encoder: 'rpEncoder',
+        Fps: 'rpFps',
+        Resolution: 'rpResolution',
+        ImageVersion: 'rpImageVersion',
+        ImageStatus: 'rpImageProvisionStatus',
+        VideoModelName: 'rpVideoModelName',
+        FirmwareVersion: 'rpFirmwareVersion',
+        BatteryLevel: 'rpBatteryLevel'
+    },
+    Command: {
+        SwitchVisionAiModel: 'cmSwitchVisionAiModel',
+        StartTrainingMode: 'cmStartTrainingMode',
+        RestartDevice: 'cmRestartDevice'
+    }
 };
 
 export const ProvisionStatus = {
@@ -88,25 +133,6 @@ export const ProvisionStatus = {
     Restarting: 'Restarting'
 };
 
-export const DeviceCommand = {
-    SwitchVisionAiModel: 'command_switch_vision_ai_model',
-    StartTrainingMode: 'command_start_training_mode',
-    RestartDevice: 'command_restart_device'
-};
-
-export const DeviceCommandParams = {
-    VisionModelUrl: 'command_param_vision_model_uri'
-};
-
-const SECONDS_PER_MINUTE: number = (60);
-const SECONDS_PER_HOUR: number = (60 * 60);
-
-const defaultIotCentralDpsProvisionApiVersion: string = '2019-01-15';
-const defaultIotCentralDpsAssigningApiVersion: string = '2019-01-15';
-const defaultIotCentralDpsEndpoint: string = 'https://global.azure-devices-provisioning.net/###SCOPEID/registrations/###DEVICEID';
-const defaultIotCentralDpsRegistrationSuffix: string = '/register?api-version=###API_VERSION';
-const defaultIotCentralDpsOperationsSuffix: string = '/operations/###OPERATION_ID?api-version=###API_VERSION';
-const defaultIotCentralExpiryHours: string = '2';
 const defaultConfidenceThreshold: number = 70;
 const defaultDetectClass: string = 'person';
 
@@ -127,22 +153,14 @@ export class IoTCentralService {
     @inject('subscription')
     private subscription: SubscriptionService;
 
-    private iotCentralScopeIdInternal: string = '';
-    private iotCentralTemplateIdInternal: string = '';
-    private iotCentralTemplateVersionInternal: string = '';
-    private iotCentralDcmidInternal: string = '';
-    private iotCentralDpsProvisionApiVersion: string = defaultIotCentralDpsProvisionApiVersion;
-    private iotCentralDpsAssigningApiVersion: string = defaultIotCentralDpsAssigningApiVersion;
-    private iotCentralDpsEndpoint: string = defaultIotCentralDpsEndpoint;
-    private iotCentralDpsRegistrationSuffix: string = defaultIotCentralDpsRegistrationSuffix;
-    private iotCentralDpsOperationsSuffix: string = defaultIotCentralDpsOperationsSuffix;
-    private iotCentralExpiryHours: string = defaultIotCentralExpiryHours;
+    private serviceInitializing: boolean = true;
+    private healthState = HealthState.Good;
 
-    private iotCentralHubConnectionStringInternal: string = '';
-    private iotCentralProvisioningStatusInternal: string = '';
-    private iotCentralConnectionStatusInternal: string = '';
+    private deferredStart = defer();
+    private iotcDeviceIdInternal: string = '';
+    private iotcModuleIdInternal: string = '';
     private iotcClient: any = null;
-    private iotcDeviceTwin: any = null;
+    private iotcModuleTwin: any = null;
     private iotcClientConnected: boolean = false;
     private iotcTelemetryThrottleTimer: number = Date.now();
     private iotcCameraPropertiesInternal: IIotcCameraProperties = {
@@ -155,32 +173,12 @@ export class IoTCentralService {
         detectClass: defaultDetectClass
     };
 
-    public get iotCentralScopeId() {
-        return this.iotCentralScopeIdInternal;
+    public get iotcDeviceId() {
+        return this.iotcDeviceIdInternal;
     }
 
-    public get iotCentralTemplateId() {
-        return this.iotCentralTemplateIdInternal;
-    }
-
-    public get iotCentralTemplateVersion() {
-        return this.iotCentralTemplateVersionInternal;
-    }
-
-    public get iotCentralDcmid() {
-        return this.iotCentralDcmidInternal;
-    }
-
-    public get iotCentralHubConnectionString() {
-        return this.iotCentralHubConnectionStringInternal;
-    }
-
-    public get iotCentralProvisioningStatus() {
-        return this.iotCentralProvisioningStatusInternal;
-    }
-
-    public get iotCentralConnectionStatus() {
-        return this.iotCentralConnectionStatusInternal;
+    public get iotcModuleId() {
+        return this.iotcModuleIdInternal;
     }
 
     public get iotcCameraProperties() {
@@ -196,154 +194,62 @@ export class IoTCentralService {
 
         this.server.method({ name: 'iotCentral.connectToIoTCentral', method: this.connectToIoTCentral });
 
-        this.iotCentralScopeIdInternal = this.config.get('iotCentralScopeId') || '';
-        this.iotCentralTemplateIdInternal = this.config.get('iotCentralTemplateId') || '';
-        this.iotCentralTemplateVersionInternal = this.config.get('iotCentralTemplateVersion') || '';
-        this.iotCentralDcmidInternal = this.config.get('iotCentralDcmid') || '';
-        this.iotCentralDpsProvisionApiVersion = this.config.get('iotCentralDpsProvisionApiVersion') || defaultIotCentralDpsProvisionApiVersion;
-        this.iotCentralDpsAssigningApiVersion = this.config.get('iotCentralDpsAssigningApiVersion') || defaultIotCentralDpsAssigningApiVersion;
-        this.iotCentralDpsEndpoint = this.config.get('iotCentralDpsEndpoint') || defaultIotCentralDpsEndpoint;
-        this.iotCentralDpsRegistrationSuffix = this.config.get('iotCentralDpsRegistrationSuffix') || defaultIotCentralDpsRegistrationSuffix;
-        this.iotCentralDpsOperationsSuffix = this.config.get('iotCentralDpsOperationsSuffix') || defaultIotCentralDpsOperationsSuffix;
-        this.iotCentralExpiryHours = this.config.get('iotCentralExpiryHours') || defaultIotCentralExpiryHours;
+        this.iotcDeviceIdInternal = this.config.get('IOTEDGE_DEVICEID') || '';
+        this.iotcModuleIdInternal = this.config.get('IOTEDGE_MODULEID') || '';
+
         this.iotcCameraPropertiesInternal.wowzaPlayerLicense = this.config.get('cloudWowzaPlayerLicense') || '';
         this.iotcCameraPropertiesInternal.wowzaPlayerVideoSourceUrl = this.config.get('cloudWowzaPlayerVideoSourceUrl') || '';
     }
 
     @bind
     public async connectToIoTCentral(): Promise<void> {
-        const iotcResult = await this.iotCentralDpsProvisionDevice();
-
-        if (iotcResult === true) {
-            await this.connectIotcClient();
-        }
-    }
-
-    public async iotCentralDpsProvisionDevice(): Promise<boolean> {
-        if (this.config.get('enableIoTCentralProvisioning') !== '1') {
-            return false;
-        }
-
-        if (!_get(this.state, 'iotCentral.deviceId')) {
-            this.logger.log(['IoTCentralService', 'warning'], `Missing device state configuration - skipping IoT Central DPS provisioning`);
-            return false;
-        }
-
-        this.logger.log(['IoTCentralService', 'info'], `Enabling DPS provisioning through IoT Central: "enableIoTCentralProvisioning=1"`);
-
-        const iotCentralState = this.state.iotCentral;
         let result = true;
-        let provisioningStatus = `IoT Central successfully provisioned device: ${iotCentralState.deviceId}`;
 
         try {
-            this.logger.log(['IoTCentralService', 'info'], `Starting IoT Central provisioning for device: ${iotCentralState.deviceId}`);
+            result = await this.connectIotcClient();
 
-            const expiry = (Date.now() - (SECONDS_PER_MINUTE * 5) + (SECONDS_PER_HOUR * Number(this.iotCentralExpiryHours)));
-            const sr = `${this.iotCentralScopeId}%2fregistrations%2f${iotCentralState.deviceId}`;
-            const sig = this.computDerivedSymmetricKey(iotCentralState.deviceKey, `${sr}\n${expiry}`);
-            const provisioningType = this.config.get('iotCentralProvisioningType') || 'pnp';
-
-            this.logger.log(['IoTCentralService', 'info'], `Device provisioning flow is: ${provisioningType}`);
-
-            const options = {
-                method: 'PUT',
-                url: this.iotCentralDpsEndpoint.replace('###SCOPEID', this.iotCentralScopeId).replace('###DEVICEID', iotCentralState.deviceId)
-                    + this.iotCentralDpsRegistrationSuffix.replace('###API_VERSION', this.iotCentralDpsProvisionApiVersion),
-                headers: {
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json; charset=utf-8',
-                    'Connection': 'keep-alive',
-                    'UserAgent': 'prov_device_client/1.0',
-                    'Authorization': `SharedAccessSignature sr=${sr}&sig=${encodeURIComponent(sig)}&se=${expiry}&skn=registration`
-                },
-                body: {
-                    registrationId: iotCentralState.deviceId,
-                    data: provisioningType === 'template'
-                        ? {
-                            iotcModelId: `${this.iotCentralTemplateId}/${this.iotCentralTemplateVersion}`
-                        }
-                        : {
-                            '__iot:interfaces': {
-                                ModelRepositoryUri: this.iotCentralDcmid,
-                                CapabilityModelUri: this.iotCentralDcmid
-                            }
-                        }
-                },
-                json: true
-            };
-
-            // check with paolo
-            let response = await this.iotcRequest(options);
-
-            const errorCode = _get(response, 'errorCode');
-            if (errorCode) {
-                this.logger.log(['IoTCentralService', 'error'], `IoT Central dps provisioning error code: ${errorCode}`);
-
-                result = false;
-            }
-
-            if (result === true) {
-                const operationId = _get(response, 'operationId');
-
-                this.logger.log(['IoTCentralService', 'info'], `IoT Central dps request succeeded - waiting for hub assignment`);
-
-                delete options.body;
-                options.method = 'GET';
-                options.url = this.iotCentralDpsEndpoint.replace('###SCOPEID', this.iotCentralScopeId).replace('###DEVICEID', iotCentralState.deviceId)
-                    + this.iotCentralDpsOperationsSuffix.replace('###OPERATION_ID', operationId).replace('###API_VERSION', this.iotCentralDpsAssigningApiVersion);
-
-                while (_get(response, 'status') === 'assigning') {
-                    await sleep(2500);
-                    this.logger.log(['IoTCentralService', 'info'], `IoT Central dps request succeeded - waiting for hub assignment`);
-
-                    response = await this.iotcRequest(options);
-                }
-
-                const status = _get(response, 'status') || 'unknown';
-                if (status === 'assigned') {
-                    const iotcHub = _get(response, 'registrationState.assignedHub');
-
-                    this.logger.log(['IoTCentralService', 'info'], `IoT Central dps hub assignment: ${iotcHub}`);
-
-                    this.iotCentralHubConnectionStringInternal = `HostName=${iotcHub};DeviceId=${iotCentralState.deviceId};SharedAccessKey=${iotCentralState.deviceKey}`;
-
-                    result = true;
-                }
-                else {
-                    const errorMessage = _get(response, 'registrationState.errorMessage') || '';
-                    this.logger.log(['IoTCentralService', 'info'], `IoT Central dps unexpected status: ${status}: ${errorMessage}`);
-
-                    result = false;
-                }
-            }
-
-            if (result === false) {
-                provisioningStatus = `IoT Central dps provisioning failed`;
-                this.logger.log(['IoTCentralService', 'error'], provisioningStatus);
-            }
+            await this.deferredStart.promise;
         }
         catch (ex) {
-            provisioningStatus = `IoT Central dps provisioning error: ${ex.message}`;
-            this.logger.log(['IoTCentralService', 'error'], provisioningStatus);
-
             result = false;
+
+            this.logger.log(['IoTCentralService', 'error'], `Exception during IoT Central device provsioning: ${ex.message}`);
         }
 
-        this.iotCentralProvisioningStatusInternal = provisioningStatus;
+        this.healthState = result === true ? HealthState.Good : HealthState.Critical;
 
-        return result;
+        this.serviceInitializing = false;
     }
 
     public async connectIotcClient(): Promise<boolean> {
         let result = true;
-        let connectionStatus = `IoT Central successfully connected device: ${this.state.iotCentral.deviceId}`;
+        let connectionStatus = `IoT Central successfully connected device: ${this.iotcDeviceIdInternal}`;
 
         if (this.iotcClient) {
             await this.iotcClient.close();
             this.iotcClient = null;
         }
 
-        this.iotcClient = AzureIotDeviceMqtt.clientFromConnectionString(this.iotCentralHubConnectionString);
+        try {
+            this.logger.log(['IoTCentralService', 'info'], `IOTEDGE_WORKLOADURI: ${this.config.get('IOTEDGE_WORKLOADURI')}`);
+            this.logger.log(['IoTCentralService', 'info'], `IOTEDGE_DEVICEID: ${this.config.get('IOTEDGE_DEVICEID')}`);
+            this.logger.log(['IoTCentralService', 'info'], `IOTEDGE_MODULEID: ${this.config.get('IOTEDGE_MODULEID')}`);
+            this.logger.log(['IoTCentralService', 'info'], `IOTEDGE_MODULEGENERATIONID: ${this.config.get('IOTEDGE_MODULEGENERATIONID')}`);
+            this.logger.log(['IoTCentralService', 'info'], `IOTEDGE_IOTHUBHOSTNAME: ${this.config.get('IOTEDGE_IOTHUBHOSTNAME')}`);
+            this.logger.log(['IoTCentralService', 'info'], `IOTEDGE_AUTHSCHEME: ${this.config.get('IOTEDGE_AUTHSCHEME')}`);
+
+            // tslint:disable-next-line:prefer-conditional-expression
+            if (_get(process.env, 'LOCAL_DEBUG') === '1') {
+                this.iotcClient = ModuleClient.fromConnectionString(this.config.get('iotCentralModuleConnectionString') || '', Mqtt);
+            }
+            else {
+                this.iotcClient = await ModuleClient.fromEnvironment(Mqtt);
+            }
+        }
+        catch (ex) {
+            this.logger.log(['IoTCentralService', 'error'], `Failed to instantiate client interface from configuraiton: ${ex.message}`);
+        }
+
         if (!this.iotcClient) {
             result = false;
         }
@@ -354,20 +260,33 @@ export class IoTCentralService {
 
                 this.iotcClient.on('error', this.onIotcClientError);
 
-                this.iotcClient.onDeviceMethod(DeviceCommand.StartTrainingMode, this.iotcClientStartTraining);
-                this.iotcClient.onDeviceMethod(DeviceCommand.SwitchVisionAiModel, this.iotcClientSwitchVisionAiModel);
-                this.iotcClient.onDeviceMethod(DeviceCommand.RestartDevice, this.iotcClientRestartDevice);
+                this.iotcClient.onMethod(PeabodyDeviceFieldIds.Command.StartTrainingMode, this.iotcClientStartTraining);
+                this.iotcClient.onMethod(PeabodyDeviceFieldIds.Command.SwitchVisionAiModel, this.iotcClientSwitchVisionAiModel);
+                this.iotcClient.onMethod(PeabodyDeviceFieldIds.Command.RestartDevice, this.iotcClientRestartDevice);
 
-                this.iotcDeviceTwin = await this.iotcClient.getTwin();
+                this.logger.log(['IoTCentralService', 'info'], `Getting twin interface...`);
+                this.iotcModuleTwin = await this.iotcClient.getTwinAsync();
+                this.logger.log(['IoTCentralService', 'info'], `Connected to module twin...`);
 
-                this.iotcDeviceTwin.on('properties.desired', this.onHandleDeviceProperties);
+                this.logger.log(['IoTCentralService', 'info'], `Registering for twin updates...`);
+                this.iotcModuleTwin.on('properties.desired', this.onHandleDeviceProperties);
+                this.logger.log(['IoTCentralService', 'info'], `Connected to twin updates...`);
 
                 this.iotcClientConnected = true;
 
-                await this.updateDeviceProperties({
+                const systemProperties = await this.getSystemProperties();
+
+                const deviceProperties = {
                     ...this.state.iotCentral.properties,
-                    [DeviceProperty.IoTCentralConnectionStatus]: connectionStatus
-                });
+                    [IoTCentralDeviceFieldIds.Properties.OsName]: osPlatform() || '',
+                    [IoTCentralDeviceFieldIds.Properties.SwVersion]: osRelease() || '',
+                    [IoTCentralDeviceFieldIds.Properties.ProcessorArchitecture]: osArch() || '',
+                    [IoTCentralDeviceFieldIds.Properties.ProcessorManufacturer]: systemProperties.cpuModel,
+                    [IoTCentralDeviceFieldIds.Properties.TotalMemory]: systemProperties.totalMemory
+                };
+                this.logger.log(['IoTCentralService', 'info'], `Updating device properties: ${JSON.stringify(deviceProperties, null, 4)}`);
+
+                await this.updateDeviceProperties(deviceProperties);
             }
             catch (ex) {
                 connectionStatus = `IoT Central connection error: ${ex.message}`;
@@ -377,13 +296,11 @@ export class IoTCentralService {
             }
         }
 
-        this.iotCentralConnectionStatusInternal = connectionStatus;
-
         return result;
     }
 
-    public async sendInferenceData(inferenceTelemetryData: any, inferenceEventData: any) {
-        if (!inferenceTelemetryData || !this.iotcClientConnected) {
+    public async sendInferenceData(inferenceData: any): Promise<void> {
+        if (!inferenceData || !this.iotcClientConnected) {
             return;
         }
 
@@ -393,9 +310,7 @@ export class IoTCentralService {
         this.iotcTelemetryThrottleTimer = Date.now();
 
         try {
-            await this.sendMeasurement(MessageType.Telemetry, inferenceTelemetryData);
-
-            await this.sendMeasurement(MessageType.Event, inferenceEventData);
+            await this.sendMeasurement(inferenceData);
         }
         catch (ex) {
             this.logger.log(['IoTCentralService', 'error'], `sendInferenceData: ${ex.message}`);
@@ -403,17 +318,19 @@ export class IoTCentralService {
     }
 
     @bind
-    public async sendMeasurement(messageType: string, data: any): Promise<void> {
+    public async sendMeasurement(data: any): Promise<void> {
         if (!data || !this.iotcClientConnected) {
             return;
         }
 
         try {
-            const iotcMessage = new AzureIotDevice.Message(JSON.stringify(data));
+            const iotcMessage = new Message(JSON.stringify(data));
 
             await this.iotcClient.sendEvent(iotcMessage);
 
-            this.logger.log(['IoTCentralService', 'info'], `Device ${messageType} message sent`);
+            if (_get(process.env, 'DEBUG_TELEMETRY') === '1') {
+                this.logger.log(['IoTCentralService', 'info'], `sendEvent: ${JSON.stringify(data, null, 4)}`);
+            }
         }
         catch (ex) {
             this.logger.log(['IoTCentralService', 'error'], `sendMeasurement: ${ex.message}`);
@@ -428,7 +345,7 @@ export class IoTCentralService {
 
         try {
             await new Promise((resolve, reject) => {
-                this.iotcDeviceTwin.properties.reported.update(properties, (error) => {
+                this.iotcModuleTwin.properties.reported.update(properties, (error) => {
                     if (error) {
                         return reject(error);
                     }
@@ -445,58 +362,115 @@ export class IoTCentralService {
     }
 
     public async getHealth(): Promise<number> {
-        return HealthState.Good;
+        return this.healthState;
+    }
+
+    public async getSystemProperties(): Promise<ISystemProperties> {
+        const cpus = osCpus();
+        const cpuUsageSamples = osLoadAvg();
+
+        if (_get(process.env, 'LOCAL_DEBUG') === '1') {
+            const nodeTotalMemory = osTotalMem() / 1024;
+            const nodeUsedMemory = nodeTotalMemory - (osFreeMem() / 1024);
+            return {
+                cpuModel: Array.isArray(cpus) ? cpus[0].model : '',
+                cpuCores: Array.isArray(cpus) ? cpus.length : 0,
+                cpuUsage: cpuUsageSamples[0],
+                totalMemory: nodeTotalMemory,
+                usedMemory: nodeUsedMemory
+            };
+        }
+
+        let totalMemory = 0;
+        let usedMemory = 0;
+
+        try {
+            const { stdout } = await promisify(exec)(`cat /proc/meminfo | awk '/MemTotal:/{print $2}'`);
+            totalMemory = Number((stdout || '0').trim());
+        }
+        catch (ex) {
+            this.logger.log(['RTCVService', 'error'], `Exception while accessing /proc/meminfo: ${ex.message}`);
+        }
+
+        try {
+            const usedMemorySample = await fse.readFile('/sys/fs/cgroup/memory/memory.usage_in_bytes', 'utf8');
+            usedMemory = Number((usedMemorySample || '0').trim()) / 1024;
+        }
+        catch (ex) {
+            this.logger.log(['RTCVService', 'error'], `Exception while accessing /sys/fs/cgroup/memory: ${ex.message}`);
+        }
+
+        return {
+            cpuModel: Array.isArray(cpus) ? cpus[0].model : '',
+            cpuCores: Array.isArray(cpus) ? cpus.length : 0,
+            cpuUsage: cpuUsageSamples[0],
+            totalMemory,
+            usedMemory
+        };
     }
 
     @bind
     private async onHandleDeviceProperties(desiredChangedSettings: any) {
-        for (const setting in desiredChangedSettings) {
-            if (!desiredChangedSettings.hasOwnProperty(setting)) {
-                continue;
+        try {
+            this.logger.log(['IoTCentralService', 'info'], `Received desiredPropSettings:\n${JSON.stringify(desiredChangedSettings, null, 4)}`);
+            for (const setting in desiredChangedSettings) {
+                if (!desiredChangedSettings.hasOwnProperty(setting)) {
+                    continue;
+                }
+
+                if (setting === '$version') {
+                    continue;
+                }
+
+                const prop = desiredChangedSettings[setting];
+                // if (!prop.hasOwnProperty('value')) {
+                //     continue;
+                // }
+
+                const value = prop.value;
+                let changedSettingResult;
+
+                switch (setting) {
+                    case PeabodyDeviceFieldIds.Setting.HdmiOutput:
+                    case PeabodyDeviceFieldIds.Setting.WowzaPlayerLicense:
+                    case PeabodyDeviceFieldIds.Setting.WowzaPlayerVideoSourceUrl:
+                        changedSettingResult = await this.cameraSettingChange(setting, value);
+                        break;
+
+                    case PeabodyDeviceFieldIds.Setting.InferenceThreshold:
+                    case PeabodyDeviceFieldIds.Setting.DetectClass:
+                        changedSettingResult = await this.visionSettingChange(setting, value);
+                        break;
+
+                    default:
+                        this.logger.log(['IoTCentralService', 'error'], `Recieved desired property change for unknown setting ${setting}`);
+                        break;
+                }
+
+                if (changedSettingResult) {
+                    const patchedProperty = {
+                        [setting]: {
+                            ...changedSettingResult,
+                            statusCode: 200,
+                            desiredVersion: desiredChangedSettings.$version,
+                            message: 'Succeeded'
+                        }
+                    };
+
+                    await this.updateDeviceProperties(patchedProperty);
+                }
             }
 
-            if (setting === '$version') {
-                continue;
-            }
-
-            const prop = desiredChangedSettings[setting];
-            if (!prop.hasOwnProperty('value')) {
-                continue;
-            }
-
-            const value = prop.value;
-            let changedSettingResult;
-
-            switch (setting) {
-                case DeviceSetting.HdmiOutput:
-                case DeviceSetting.WowzaPlayerLicense:
-                case DeviceSetting.WowzaPlayerVideoSourceUrl:
-                    changedSettingResult = await this.cameraSettingChange(setting, value);
-                    break;
-
-                case DeviceSetting.InferenceThreshold:
-                case DeviceSetting.DetectClass:
-                    changedSettingResult = await this.visionSettingChange(setting, value);
-                    break;
-
-                default:
-                    this.logger.log(['IoTCentralService', 'error'], `Recieved desired property change for unknown setting ${setting}`);
-                    break;
-            }
-
-            if (changedSettingResult) {
-                const patchedProperty = {
-                    [setting]: {
-                        ...changedSettingResult,
-                        statusCode: 200,
-                        desiredVersion: desiredChangedSettings.$version,
-                        message: 'Succeeded'
-                    }
-                };
-
-                await this.updateDeviceProperties(patchedProperty);
+            if (!this.serviceInitializing) {
+                forget((this.server.methods.rtcv as any).startPipeline);
+                this.subscription.publishUpdateConfiguration();
             }
         }
+        catch (ex) {
+            this.logger.log(['IoTCentralService', 'error'], `Exception while handling desired properties: ${ex.message}`);
+        }
+
+        this.deferredStart.resolve();
     }
 
     @bind
@@ -509,17 +483,17 @@ export class IoTCentralService {
         };
 
         switch (setting) {
-            case DeviceSetting.HdmiOutput:
+            case PeabodyDeviceFieldIds.Setting.HdmiOutput:
                 this.iotcCameraPropertiesInternal.hdmiOutput = value;
                 result.value = await (this.server.methods.camera as any).switchHdmiOutput(value);
                 break;
 
-            case DeviceSetting.WowzaPlayerLicense:
-                this.iotcCameraPropertiesInternal.wowzaPlayerLicense = value;
+            case PeabodyDeviceFieldIds.Setting.WowzaPlayerLicense:
+                this.iotcCameraPropertiesInternal.wowzaPlayerLicense = value === 'None' ? '' : value;
                 break;
 
-            case DeviceSetting.WowzaPlayerVideoSourceUrl:
-                this.iotcCameraPropertiesInternal.wowzaPlayerVideoSourceUrl = value === 'Unknown' ? '' : value;
+            case PeabodyDeviceFieldIds.Setting.WowzaPlayerVideoSourceUrl:
+                this.iotcCameraPropertiesInternal.wowzaPlayerVideoSourceUrl = value === 'None' ? '' : value;
                 break;
 
             default:
@@ -529,9 +503,6 @@ export class IoTCentralService {
 
         if (!result.value) {
             result.status = 'error';
-        }
-        else {
-            this.subscription.publishUpdateConfiguration();
         }
 
         return result;
@@ -547,11 +518,11 @@ export class IoTCentralService {
         };
 
         switch (setting) {
-            case DeviceSetting.InferenceThreshold:
+            case PeabodyDeviceFieldIds.Setting.InferenceThreshold:
                 this.iotcVisionPropertiesInternal.inferenceThreshold = value;
                 break;
 
-            case DeviceSetting.DetectClass:
+            case PeabodyDeviceFieldIds.Setting.DetectClass:
                 this.iotcVisionPropertiesInternal.detectClass = value;
                 break;
 
@@ -563,48 +534,37 @@ export class IoTCentralService {
         if (!result.value) {
             result.status = 'error';
         }
-        else {
-            this.subscription.publishUpdateConfiguration();
-        }
 
         return result;
-    }
-
-    private computDerivedSymmetricKey(secret: string, id: string): string {
-        const secretBuffer = Buffer.from(secret, 'base64');
-        const derivedSymmetricKey = crypto.createHmac('SHA256', secretBuffer).update(id, 'utf8').digest('base64');
-
-        return derivedSymmetricKey;
     }
 
     @bind
     private onIotcClientError(error: Error) {
         this.logger.log(['IoTCentralService', 'error'], `Client connection error: ${error.message}`);
-
-        // forget(this.updateDeviceProperties, { [DeviceProperty.IoTCentralConnectionStatus]: error.message });
+        this.healthState = HealthState.Critical;
     }
 
     @bind
     // @ts-ignore (commandRequest)
-    private async iotcClientStartTraining(commandRequest: any, commandResponse: any) {
-        this.logger.log(['IoTCentralService', 'error'], `${DeviceCommand.StartTrainingMode} command received`);
+    private async iotcClientStartTraining(commandRequest: DeviceMethodRequest, commandResponse: DeviceMethodResponse) {
+        this.logger.log(['IoTCentralService', 'error'], `${PeabodyDeviceFieldIds.Command.StartTrainingMode} command received`);
 
         commandResponse.send(200, (error) => {
             if (error) {
-                this.logger.log(['IoTCentralService', 'error'], `Error sending response for ${DeviceCommand.StartTrainingMode} command: ${error.toString()}`);
+                this.logger.log(['IoTCentralService', 'error'], `Error sending response for ${PeabodyDeviceFieldIds.Command.StartTrainingMode} command: ${error.toString()}`);
             }
         });
     }
 
     @bind
-    private async iotcClientSwitchVisionAiModel(iotcRequest: any, iotcResponse: any) {
-        this.logger.log(['IoTCentralService', 'error'], `${DeviceCommand.SwitchVisionAiModel} command received`);
+    private async iotcClientSwitchVisionAiModel(iotcRequest: DeviceMethodRequest, iotcResponse: DeviceMethodResponse) {
+        this.logger.log(['IoTCentralService', 'error'], `${PeabodyDeviceFieldIds.Command.SwitchVisionAiModel} command received`);
 
         const fileUrl = _get(iotcRequest, `payload.${DeviceCommandParams.VisionModelUrl}`);
 
         iotcResponse.send(fileUrl ? 200 : 400, (error) => {
             if (error) {
-                this.logger.log(['IoTCentralService', 'error'], `Error sending response for ${DeviceCommand.StartTrainingMode} command: ${error.toString()}`);
+                this.logger.log(['IoTCentralService', 'error'], `Error sending response for ${PeabodyDeviceFieldIds.Command.StartTrainingMode} command: ${error.toString()}`);
             }
         });
 
@@ -620,35 +580,15 @@ export class IoTCentralService {
 
     @bind
     // @ts-ignore (commandRequest)
-    private async iotcClientRestartDevice(commandRequest: any, commandResponse: any) {
-        this.logger.log(['IoTCentralService', 'error'], `${DeviceCommand.RestartDevice} command received`);
+    private async iotcClientRestartDevice(commandRequest: DeviceMethodRequest, commandResponse: DeviceMethodResponse) {
+        this.logger.log(['IoTCentralService', 'error'], `${PeabodyDeviceFieldIds.Command.RestartDevice} command received`);
 
         commandResponse.send(200, (error) => {
             if (error) {
-                this.logger.log(['IoTCentralService', 'error'], `Error sending response for ${DeviceCommand.StartTrainingMode} command: ${error.toString()}`);
+                this.logger.log(['IoTCentralService', 'error'], `Error sending response for ${PeabodyDeviceFieldIds.Command.StartTrainingMode} command: ${error.toString()}`);
             }
         });
 
-        await (this.server.methods.fileHandler as any).restartDevice('IoTCentralService:iotcClientRestartCommand');
-    }
-
-    private async iotcRequest(options: any): Promise<any> {
-        return new Promise((resolve, reject) => {
-            request(options, (requestError, response, body) => {
-                if (requestError) {
-                    this.logger.log(['IoTCentralService', 'error'], `iotcRequest: ${requestError.message}`);
-                    return reject(requestError);
-                }
-
-                if (response.statusCode < 200 || response.statusCode > 299) {
-                    this.logger.log(['IoTCentralService', 'error'], `Response status code = ${response.statusCode}`);
-
-                    const errorMessage = body.message || body || 'An error occurred';
-                    return reject(new Error(`Error statusCode: ${response.statusCode}, ${errorMessage}`));
-                }
-
-                return resolve(body);
-            });
-        });
+        await (this.server.methods.device as any).restartDevice('IoTCentralService:iotcClientRestartCommand');
     }
 }
