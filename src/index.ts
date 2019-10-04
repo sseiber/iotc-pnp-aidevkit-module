@@ -49,7 +49,7 @@ async function start() {
         server.log(['startup', 'info'], `👩‍💻 Finished IoT Central provisioning`);
 
         server.log(['startup', 'info'], `📁 Starting Docker image provisioning`);
-        await (server.methods.fileHandler as any).provisionDockerImage();
+        await (server.methods.device as any).provisionDockerImage();
         server.log(['startup', 'info'], `📁 Finished Docker image provisioning`);
 
         server.log(['startup', 'info'], `📷 Starting camera initialzation`);

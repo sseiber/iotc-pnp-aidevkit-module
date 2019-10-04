@@ -2,7 +2,11 @@ import { inject, service } from 'spryly';
 import { Server } from '@hapi/hapi';
 import { ConfigService } from './config';
 import { LoggingService } from './logging';
-import { IoTCentralService, DeviceTelemetry, DeviceEvent, DeviceProperty, ProvisionStatus, MessageType } from '../services/iotcentral';
+import {
+    IoTCentralService,
+    PeabodyDeviceFieldIds,
+    ProvisionStatus
+} from './iotcentral';
 import {
     join as pathJoin,
     resolve as pathResolve,
@@ -16,7 +20,7 @@ import * as request from 'request';
 import * as _get from 'lodash.get';
 import * as compareVersions from 'compare-versions';
 import { bind, pjson, sleep } from '../utils';
-import { HealthState } from './serverTypes';
+import { HealthState } from './health';
 
 const defaultEdgeDeployment: string = '0';
 const defaultFileUploadFolder: string = 'storage';
@@ -29,8 +33,8 @@ const defaultDockerApiVersion: string = '1.37';
 const defaultDockerSocket: string = '/var/run/docker.sock';
 const defaultDockerImageName: string = 'iotc-pnp-aidevkit-module';
 
-@service('fileHandler')
-export class FileHandlerService {
+@service('device')
+export class DeviceService {
     @inject('$server')
     private server: Server;
 
@@ -60,11 +64,11 @@ export class FileHandlerService {
     }
 
     public async init(): Promise<void> {
-        this.logger.log(['FileHandler', 'info'], 'initialize');
+        this.logger.log(['DeviceService', 'info'], 'initialize');
 
-        this.server.method({ name: 'fileHandler.provisionDockerImage', method: this.provisionDockerImage });
-        this.server.method({ name: 'fileHandler.restartDevice', method: this.restartDevice });
-        this.server.method({ name: 'fileHandler.restartQmmfServices', method: this.restartQmmfServices });
+        this.server.method({ name: 'device.provisionDockerImage', method: this.provisionDockerImage });
+        this.server.method({ name: 'device.restartDevice', method: this.restartDevice });
+        this.server.method({ name: 'device.restartQmmfServices', method: this.restartQmmfServices });
 
         this.edgeDeployment = this.config.get('IOTEDGE_DEVICEID') || defaultEdgeDeployment;
         this.fileUploadFolder = this.config.get('fileUploadFolder') || defaultFileUploadFolder;
@@ -80,9 +84,9 @@ export class FileHandlerService {
 
     @bind
     public async provisionDockerImage(): Promise<void> {
-        this.logger.log(['FileHandler', 'info'], `Provisioning docker imgage`);
+        this.logger.log(['DeviceService', 'info'], `Provisioning docker imgage`);
 
-        await this.iotCentral.updateDeviceProperties({ [DeviceProperty.ImageStatus]: ProvisionStatus.Installing });
+        await this.iotCentral.updateDeviceProperties({ [PeabodyDeviceFieldIds.Property.ImageStatus]: ProvisionStatus.Installing });
 
         const imageVersionFilePath = pathResolve(this.storageFolderPath, 'image.ver');
 
@@ -91,61 +95,61 @@ export class FileHandlerService {
             const versionData = await this.getContainerImageVersion();
 
             if (this.edgeDeployment !== defaultEdgeDeployment && _get(versionData, 'version') !== 'Unknown') {
-                this.logger.log(['FileHandler', 'info'], `Found existing version file: ${versionData.version}, new image is: ${this.dockerImageVersion}`);
+                this.logger.log(['DeviceService', 'info'], `Found existing version file: ${versionData.version}, new image is: ${this.dockerImageVersion}`);
 
                 if (compareVersions(versionData.version, this.dockerImageVersion) < 0) {
-                    this.logger.log(['FileHandler', 'info'], `Removing docker images < version ${this.dockerImageVersion}`);
+                    this.logger.log(['DeviceService', 'info'], `Removing docker images < version ${this.dockerImageVersion}`);
 
                     await this.removeDockerImages();
 
                     fse.unlinkSync(imageVersionFilePath);
 
-                    this.logger.log(['FileHandler', 'info'], `Writing new version file: ${this.dockerImageVersion}`);
+                    this.logger.log(['DeviceService', 'info'], `Writing new version file: ${this.dockerImageVersion}`);
 
                     writeFileSync(imageVersionFilePath, { version: this.dockerImageVersion });
 
                     await this.iotCentral.updateDeviceProperties({
-                        [DeviceProperty.ImageVersion]: this.dockerImageVersion,
-                        [DeviceProperty.ImageStatus]: ProvisionStatus.Pending,
-                        [DeviceProperty.FirmwareVersion]: firmwareProperties.firmwareVersion,
-                        [DeviceProperty.BatteryLevel]: firmwareProperties.batteryLevel
+                        [PeabodyDeviceFieldIds.Property.ImageVersion]: this.dockerImageVersion,
+                        [PeabodyDeviceFieldIds.Property.ImageStatus]: ProvisionStatus.Pending,
+                        [PeabodyDeviceFieldIds.Property.FirmwareVersion]: firmwareProperties.firmwareVersion,
+                        [PeabodyDeviceFieldIds.Property.BatteryLevel]: firmwareProperties.batteryLevel
                     });
 
-                    await this.restartDevice('FileHandler:provisionDockerImage:newImage');
-                    // await this.restartQmmfServices('FileHandler:provisionDockerImage:newImage');
+                    await this.restartDevice('DeviceService:provisionDockerImage:newImage');
+                    // await this.restartQmmfServices('DeviceService:provisionDockerImage:newImage');
                 }
                 else {
-                    await this.iotCentral.sendMeasurement(MessageType.Event, { [DeviceEvent.ImageProvisionComplete]: this.dockerImageVersion });
+                    await this.iotCentral.sendMeasurement({ [PeabodyDeviceFieldIds.Event.ImageProvisionComplete]: this.dockerImageVersion });
 
                     await this.iotCentral.updateDeviceProperties({
-                        [DeviceProperty.ImageVersion]: this.dockerImageVersion,
-                        [DeviceProperty.ImageStatus]: ProvisionStatus.Completed,
-                        [DeviceProperty.FirmwareVersion]: firmwareProperties.firmwareVersion,
-                        [DeviceProperty.BatteryLevel]: firmwareProperties.batteryLevel
+                        [PeabodyDeviceFieldIds.Property.ImageVersion]: this.dockerImageVersion,
+                        [PeabodyDeviceFieldIds.Property.ImageStatus]: ProvisionStatus.Completed,
+                        [PeabodyDeviceFieldIds.Property.FirmwareVersion]: firmwareProperties.firmwareVersion,
+                        [PeabodyDeviceFieldIds.Property.BatteryLevel]: firmwareProperties.batteryLevel
                     });
                 }
             }
             else {
-                this.logger.log(['FileHandler', 'info'], `No previous version file found`);
-                this.logger.log(['FileHandler', 'info'], `Writing new version file: ${this.dockerImageVersion}`);
+                this.logger.log(['DeviceService', 'info'], `No previous version file found`);
+                this.logger.log(['DeviceService', 'info'], `Writing new version file: ${this.dockerImageVersion}`);
 
                 writeFileSync(imageVersionFilePath, { version: this.dockerImageVersion });
 
                 await this.iotCentral.updateDeviceProperties({
-                    [DeviceProperty.ImageVersion]: this.dockerImageVersion,
-                    [DeviceProperty.ImageStatus]: ProvisionStatus.Pending,
-                    [DeviceProperty.FirmwareVersion]: firmwareProperties.firmwareVersion,
-                    [DeviceProperty.BatteryLevel]: firmwareProperties.batteryLevel
+                    [PeabodyDeviceFieldIds.Property.ImageVersion]: this.dockerImageVersion,
+                    [PeabodyDeviceFieldIds.Property.ImageStatus]: ProvisionStatus.Pending,
+                    [PeabodyDeviceFieldIds.Property.FirmwareVersion]: firmwareProperties.firmwareVersion,
+                    [PeabodyDeviceFieldIds.Property.BatteryLevel]: firmwareProperties.batteryLevel
                 });
 
                 if (this.edgeDeployment !== defaultEdgeDeployment) {
-                    await this.restartDevice('FileHandler:provisionDockerImage:noFile');
-                    // await this.restartQmmfServices('FileHandler:provisionDockerImage:noFile');
+                    await this.restartDevice('DeviceService:provisionDockerImage:noFile');
+                    // await this.restartQmmfServices('DeviceService:provisionDockerImage:noFile');
                 }
             }
         }
         catch (ex) {
-            this.logger.log(['FileHandler', 'error'], `Error during docker image provisioning: ${ex.message}`);
+            this.logger.log(['DeviceService', 'error'], `Error during docker image provisioning: ${ex.message}`);
         }
     }
 
@@ -157,27 +161,27 @@ export class FileHandlerService {
 
         try {
             if (fse.statSync(destFilePath).size <= 0) {
-                this.logger.log(['FileHandler', 'error'], `Empty video model package detected - skipping`);
+                this.logger.log(['DeviceService', 'error'], `Empty video model package detected - skipping`);
                 return false;
             }
 
-            this.logger.log(['FileHandler', 'info'], `Removing any existing target unzip dir: ${destUnzipDir}`);
+            this.logger.log(['DeviceService', 'info'], `Removing any existing target unzip dir: ${destUnzipDir}`);
             await promisify(exec)(`rm -rf ${destUnzipDir}`);
 
             const unzipCommand = this.unzipCommand.replace('###UNZIPDIR', destUnzipDir).replace('###TARGET', destFilePath);
             const { stdout } = await promisify(exec)(unzipCommand);
-            this.logger.log(['FileHandler', 'info'], `Extracted files: ${stdout}`);
+            this.logger.log(['DeviceService', 'info'], `Extracted files: ${stdout}`);
 
-            this.logger.log(['FileHandler', 'info'], `Removing zip package: ${destFilePath}`);
+            this.logger.log(['DeviceService', 'info'], `Removing zip package: ${destFilePath}`);
             await promisify(exec)(`rm -f ${destFilePath}`);
 
-            this.logger.log(['FileHandler', 'info'], `Done extracting in: ${destUnzipDir}`);
+            this.logger.log(['DeviceService', 'info'], `Done extracting in: ${destUnzipDir}`);
             const dlcFile = await this.ensureModelFilesExist(destUnzipDir);
 
             return dlcFile !== '';
         }
         catch (ex) {
-            this.logger.log(['FileHandler', 'error'], `Error extracting files: ${ex.message}`);
+            this.logger.log(['DeviceService', 'error'], `Error extracting files: ${ex.message}`);
         }
 
         return false;
@@ -190,11 +194,11 @@ export class FileHandlerService {
 
         const contentType = _get(file, 'hapi.headers.content-type');
         if (contentType !== 'application/zip' && contentType !== 'application/x-zip-compressed') {
-            this.logger.log(['FileHandler', 'error'], `Expected application/zip type but got: ${contentType}`);
+            this.logger.log(['DeviceService', 'error'], `Expected application/zip type but got: ${contentType}`);
             return '';
         }
 
-        this.logger.log(['FileHandler', 'info'], `Creating write stream for: ${destFilePath}`);
+        this.logger.log(['DeviceService', 'info'], `Creating write stream for: ${destFilePath}`);
         const fileStream = fse.createWriteStream(destFilePath);
 
         return new Promise((resolve, reject) => {
@@ -207,17 +211,17 @@ export class FileHandlerService {
 
                 file.on('end', (error) => {
                     if (error) {
-                        this.logger.log(['FileHandler', 'error'], `File upload error: ${error}`);
+                        this.logger.log(['DeviceService', 'error'], `File upload error: ${error}`);
                     }
                     else {
-                        this.logger.log(['FileHandler', 'info'], `Finished writing file: ${destFilePath}`);
+                        this.logger.log(['DeviceService', 'info'], `Finished writing file: ${destFilePath}`);
                     }
 
                     resolve(sourceFileName);
                 });
             }
             catch (ex) {
-                this.logger.log(['FileHandler', 'error'], `File upload error: ${ex.message}`);
+                this.logger.log(['DeviceService', 'error'], `File upload error: ${ex.message}`);
 
                 reject(false);
             }
@@ -238,20 +242,20 @@ export class FileHandlerService {
                 return '';
             }
 
-            this.logger.log(['FileHandler', 'info'], `Downloading model package: ${fileName}`);
+            this.logger.log(['DeviceService', 'info'], `Downloading model package: ${fileName}`);
 
             result = await new Promise((resolve, reject) => {
                 request
                     .get(fileUrl)
                     .on('error', (error) => {
-                        this.logger.log(['FileHandler', 'error'], `Error downloading model package: ${error.message}`);
+                        this.logger.log(['DeviceService', 'error'], `Error downloading model package: ${error.message}`);
                         return reject(error);
                     })
                     .on('response', (data) => {
                         const totalBytes = parseInt(data.headers['content-length'], 10) || 1;
                         progressChunk = Math.floor(totalBytes / 10);
 
-                        this.logger.log(['FileHandler', 'info'], `Downloading model package - total bytes: ${totalBytes}`);
+                        this.logger.log(['DeviceService', 'info'], `Downloading model package - total bytes: ${totalBytes}`);
                     })
                     .on('data', (chunk) => {
                         receivedBytes += chunk.length;
@@ -259,11 +263,11 @@ export class FileHandlerService {
                         if (receivedBytes > (progressTotal + progressChunk)) {
                             progressTotal += progressChunk;
 
-                            this.logger.log(['FileHandler', 'info'], `Downloading model package - received bytes: ${receivedBytes}`);
+                            this.logger.log(['DeviceService', 'info'], `Downloading model package - received bytes: ${receivedBytes}`);
                         }
                     })
                     .on('end', () => {
-                        this.logger.log(['FileHandler', 'info'], `Finished downloading model package: ${fileName}`);
+                        this.logger.log(['DeviceService', 'info'], `Finished downloading model package: ${fileName}`);
                         return resolve(fileName);
                     })
                     .pipe(fse.createWriteStream(pathResolve(this.storageFolderPath, fileName)))
@@ -276,7 +280,7 @@ export class FileHandlerService {
             });
         }
         catch (ex) {
-            this.logger.log(['FileHandler', 'error'], `Error downloading model package: ${ex.message}`);
+            this.logger.log(['DeviceService', 'error'], `Error downloading model package: ${ex.message}`);
             result = '';
         }
 
@@ -290,26 +294,26 @@ export class FileHandlerService {
         const destUnzipDir = destFilePath.slice(0, -4);
 
         try {
-            this.logger.log(['FileHandler', 'info'], `Cleaning models folder: ${this.modelFolderPath}`);
+            this.logger.log(['DeviceService', 'info'], `Cleaning models folder: ${this.modelFolderPath}`);
             await promisify(exec)(`rm -f ${this.modelFolderPath}/*`);
 
-            this.logger.log(['FileHandler', 'info'], `Copying new model files from: ${destUnzipDir}`);
+            this.logger.log(['DeviceService', 'info'], `Copying new model files from: ${destUnzipDir}`);
             await promisify(exec)(`cp -R ${destUnzipDir}/* ${this.modelFolderPath}`);
 
-            this.logger.log(['FileHandler', 'info'], `Removing unzipped model folder: ${destUnzipDir}`);
+            this.logger.log(['DeviceService', 'info'], `Removing unzipped model folder: ${destUnzipDir}`);
             await promisify(exec)(`rm -rf ${destUnzipDir}`);
 
             return true;
         }
         catch (ex) {
-            this.logger.log(['FileHandler', 'error'], `Error extracting files: ${ex.message}`);
+            this.logger.log(['DeviceService', 'error'], `Error extracting files: ${ex.message}`);
         }
 
         return false;
     }
 
     public async ensureModelFilesExist(modelFolder: string): Promise<string> {
-        this.logger.log(['FileHandler', 'info'], `Ensure .dlc file exists in: ${modelFolder}`);
+        this.logger.log(['DeviceService', 'info'], `Ensure .dlc file exists in: ${modelFolder}`);
 
         let dlcFile = '';
 
@@ -322,7 +326,7 @@ export class FileHandlerService {
             return dlcFile;
         }
         catch (ex) {
-            this.logger.log(['FileHandler', 'error'], `Error enumerating model files: ${ex.message}`);
+            this.logger.log(['DeviceService', 'error'], `Error enumerating model files: ${ex.message}`);
         }
 
         return dlcFile;
@@ -331,8 +335,8 @@ export class FileHandlerService {
     public async getHealth(): Promise<number> {
         const firmwareProperties = await this.getFirmwareProperties();
 
-        await this.iotCentral.sendMeasurement(MessageType.Telemetry, { [DeviceTelemetry.BatteryLevel]: firmwareProperties.batteryLevel });
-        await this.iotCentral.updateDeviceProperties({ [DeviceProperty.BatteryLevel]: firmwareProperties.batteryLevel });
+        await this.iotCentral.sendMeasurement({ [PeabodyDeviceFieldIds.Telemetry.BatteryLevel]: firmwareProperties.batteryLevel });
+        await this.iotCentral.updateDeviceProperties({ [PeabodyDeviceFieldIds.Property.BatteryLevel]: firmwareProperties.batteryLevel });
 
         return HealthState.Good;
     }
@@ -357,7 +361,7 @@ export class FileHandlerService {
             }
         }
         catch (ex) {
-            this.logger.log(['FileHandler', 'error'], `Error retrieving firmware version: ${ex.message}`);
+            this.logger.log(['DeviceService', 'error'], `Error retrieving firmware version: ${ex.message}`);
         }
 
         try {
@@ -367,7 +371,7 @@ export class FileHandlerService {
             }
         }
         catch (ex) {
-            this.logger.log(['FileHandler', 'error'], `Error retrieving device battery level: ${ex.message}`);
+            this.logger.log(['DeviceService', 'error'], `Error retrieving device battery level: ${ex.message}`);
         }
 
         return result;
@@ -388,7 +392,7 @@ export class FileHandlerService {
             }
         }
         catch (ex) {
-            this.logger.log(['FileHandler', 'error'], `Error looking for firmware version file: ${ex.message}`);
+            this.logger.log(['DeviceService', 'error'], `Error looking for firmware version file: ${ex.message}`);
         }
 
         return result;
@@ -400,10 +404,10 @@ export class FileHandlerService {
             return;
         }
 
-        this.logger.log(['FileHandler', 'info'], `Restarting Qmmf services...`);
+        this.logger.log(['DeviceService', 'info'], `Restarting Qmmf services...`);
 
         try {
-            await this.iotCentral.sendMeasurement(MessageType.Event, { [DeviceEvent.QmmfRestart]: fromService });
+            await this.iotCentral.sendMeasurement({ [PeabodyDeviceFieldIds.Event.QmmfRestart]: fromService });
 
             await promisify(exec)(`systemctl restart qmmf-webserver`);
             await promisify(exec)(`systemctl restart ipc-webserver`);
@@ -411,7 +415,7 @@ export class FileHandlerService {
             await sleep(2000);
         }
         catch (ex) {
-            this.logger.log(['FileHandler', 'error'], `Failed to auto-restart qmmf services - will exit container now: ${ex.message}`);
+            this.logger.log(['DeviceService', 'error'], `Failed to auto-restart qmmf services - will exit container now: ${ex.message}`);
         }
     }
 
@@ -422,24 +426,24 @@ export class FileHandlerService {
         }
 
         // wait here for 5 minutes while we signal a reboot
-        this.logger.log(['FileHandler', 'info'], `Signalling a restart - waiting 5 minutes...`);
+        this.logger.log(['DeviceService', 'info'], `Scheduling a restart in 30 seconds...`);
 
         try {
-            await this.iotCentral.sendMeasurement(MessageType.Event, { [DeviceEvent.DeviceRestart]: fromService });
-            await this.iotCentral.updateDeviceProperties({ [DeviceProperty.ImageStatus]: ProvisionStatus.Restarting });
+            await this.iotCentral.sendMeasurement({ [PeabodyDeviceFieldIds.Event.DeviceRestart]: fromService });
+            await this.iotCentral.updateDeviceProperties({ [PeabodyDeviceFieldIds.Property.ImageStatus]: ProvisionStatus.Restarting });
 
             await promisify(exec)(`reboot --reboot`);
 
             await new Promise((resolve) => {
                 setTimeout(() => {
                     resolve();
-                }, (1000 * 60 * 5));
+                }, (1000 * 30));
             });
 
-            this.logger.log(['FileHandler', 'info'], `Failed to auto-restart after 5 minutes... Container will restart now.`);
+            this.logger.log(['DeviceService', 'info'], `Failed to auto-restart after 30 seconds... Container will restart now.`);
         }
         catch (ex) {
-            this.logger.log(['FileHandler', 'error'], `Failed to auto-restart device - will exit container now: ${ex.message}`);
+            this.logger.log(['DeviceService', 'error'], `Failed to auto-restart device - will exit container now: ${ex.message}`);
         }
 
         // let Docker restart our container
@@ -459,7 +463,7 @@ export class FileHandlerService {
                 const imageVersion = imageName.split(':')[1];
 
                 if (imageVersion < this.dockerImageVersion) {
-                    this.logger.log(['FileHandler', 'info'], `Removing (-f) container id: ${imageId}`);
+                    this.logger.log(['DeviceService', 'info'], `Removing (-f) container id: ${imageId}`);
 
                     const options = {
                         method: 'DELETE',
@@ -494,12 +498,12 @@ export class FileHandlerService {
         return new Promise((resolve, reject) => {
             request(options, (requestError, response, body) => {
                 if (requestError) {
-                    this.logger.log(['FileHandler', 'error', 'dockerRequest'], `dockerRequest error: ${requestError.message}`);
+                    this.logger.log(['DeviceService', 'error', 'dockerRequest'], `dockerRequest error: ${requestError.message}`);
                     return reject(requestError);
                 }
 
                 if (response.statusCode < 200 || response.statusCode > 299) {
-                    this.logger.log(['FileHandler', 'error', 'dockerRequest'], `Response status code = ${response.statusCode}`);
+                    this.logger.log(['DeviceService', 'error', 'dockerRequest'], `Response status code = ${response.statusCode}`);
 
                     const errorMessage = body.message || body || 'An error occurred';
                     return reject(new Error(`Error statusCode: ${response.statusCode}, ${errorMessage}`));

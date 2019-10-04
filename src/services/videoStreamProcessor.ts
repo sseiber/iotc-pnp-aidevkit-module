@@ -3,12 +3,12 @@ import { Server } from '@hapi/hapi';
 import { spawn } from 'child_process';
 import { LoggingService } from './logging';
 import { ConfigService } from './config';
-import { IoTCentralService, DeviceEvent, MessageType } from '../services/iotcentral';
+import { IoTCentralService, PeabodyDeviceFieldIds } from '../services/iotcentral';
 import { Transform } from 'stream';
 import { platform as osPlatform } from 'os';
 import { forget } from '../utils';
 import * as _get from 'lodash.get';
-import { HealthState } from './serverTypes';
+import { HealthState } from './health';
 
 const rtspVideoCaptureSource = 'rtsp';
 const ffmpegCommand = 'ffmpeg';
@@ -62,7 +62,7 @@ export class VideoStreamController {
             this.ffmpegProcess.on('error', (error) => {
                 this.logger.log(['videoController', 'error'], `Error on ffmpegProcess: ${_get(error, 'message')}`);
 
-                forget(this.iotCentral.sendMeasurement, MessageType.Event, { [DeviceEvent.VideoStreamProcessingError]: _get(error, 'message') });
+                forget(this.iotCentral.sendMeasurement, { [PeabodyDeviceFieldIds.Event.VideoStreamProcessingError]: _get(error, 'message') });
 
                 this.healthState = HealthState.Critical;
             });
@@ -70,7 +70,7 @@ export class VideoStreamController {
             this.ffmpegProcess.on('exit', (code, signal) => {
                 this.logger.log(['videoController', 'info'], `Exit on ffmpegProcess, code: ${code}, signal: ${signal}`);
 
-                forget(this.iotCentral.sendMeasurement, MessageType.Event, { [DeviceEvent.VideoStreamProcessingStopped]: '1' });
+                forget(this.iotCentral.sendMeasurement, { [PeabodyDeviceFieldIds.Event.VideoStreamProcessingStopped]: '1' });
 
                 if (this.ffmpegProcess !== null) {
                     // abnormal exit
@@ -88,7 +88,7 @@ export class VideoStreamController {
 
             this.ffmpegProcess.stdout.pipe(frameProcessor);
 
-            await this.iotCentral.sendMeasurement(MessageType.Event, { [DeviceEvent.VideoStreamProcessingStarted]: '1' });
+            await this.iotCentral.sendMeasurement({ [PeabodyDeviceFieldIds.Event.VideoStreamProcessingStarted]: '1' });
 
             return true;
         }
