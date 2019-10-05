@@ -1,0 +1,623 @@
+{
+    "@id": "urn:keggf4i_:capabilitymodel:hkgrn_uhz:4",
+    "@type": "CapabilityModel",
+    "implements": [],
+    "displayName": {
+      "en": "Peabody IoT Central"
+    },
+    "contents": [
+      {
+        "@id": "urn:keggf4i_:capabilitymodel:hkgrn_uhz:PeabodyIoTCentral:1",
+        "@type": [
+          "Relationship",
+          "SemanticType/EdgeModule"
+        ],
+        "displayName": {
+          "en": "PeabodyIoTCentral"
+        },
+        "name": "PeabodyIoTCentral",
+        "maxMultiplicity": 1,
+        "target": [
+          {
+            "@id": "urn:keggf4i_:PeabodyIoTCentral:1",
+            "@type": "CapabilityModel",
+            "implements": [
+              {
+                "@id": "urn:keggf4i_:PeabodyIoTCentral:uijqfnxac:1",
+                "@type": "InterfaceInstance",
+                "displayName": {
+                  "en": "Manage"
+                },
+                "name": "manage",
+                "schema": {
+                  "@id": "urn:keggf4i_:PeabodyIoTCentral:manage:1",
+                  "@type": "Interface",
+                  "displayName": {
+                    "en": "Manage"
+                  },
+                  "contents": [
+                    {
+                      "@id": "urn:keggf4i_:PeabodyIoTCentral:manage:wpHdmiOutput:1",
+                      "@type": "Property",
+                      "displayName": {
+                        "en": "HDMI Output"
+                      },
+                      "name": "wpHdmiOutput",
+                      "writable": true,
+                      "schema": "boolean"
+                    },
+                    {
+                      "@id": "urn:keggf4i_:PeabodyIoTCentral:manage:wpInferenceThreshold:1",
+                      "@type": "Property",
+                      "displayName": {
+                        "en": "Inference Threshold"
+                      },
+                      "name": "wpInferenceThreshold",
+                      "writable": true,
+                      "schema": "double"
+                    },
+                    {
+                      "@id": "urn:keggf4i_:PeabodyIoTCentral:manage:wpDetectClass:1",
+                      "@type": "Property",
+                      "displayName": {
+                        "en": "Detect Class"
+                      },
+                      "name": "wpDetectClass",
+                      "writable": true,
+                      "schema": "string"
+                    },
+                    {
+                      "@id": "urn:keggf4i_:PeabodyIoTCentral:manage:wpWowzaPlayerLicense:1",
+                      "@type": "Property",
+                      "displayName": {
+                        "en": "Wowza Player License"
+                      },
+                      "name": "wpWowzaPlayerLicense",
+                      "writable": true,
+                      "schema": "string"
+                    },
+                    {
+                      "@id": "urn:keggf4i_:PeabodyIoTCentral:manage:wpWowzaPlayerVideoSourceUrl:1",
+                      "@type": "Property",
+                      "displayName": {
+                        "en": "Wowza Player Video Source Url"
+                      },
+                      "name": "wpWowzaPlayerVideoSourceUrl",
+                      "writable": true,
+                      "schema": "string"
+                    }
+                  ]
+                }
+              },
+              {
+                "@id": "urn:keggf4i_:PeabodyIoTCentral:d5xrrfqz:1",
+                "@type": "InterfaceInstance",
+                "name": "Device_information_7b0",
+                "schema": {
+                  "@id": "urn:azureiot:DeviceManagement:DeviceInformation:1",
+                  "@type": "Interface",
+                  "displayName": {
+                    "en": "Device information"
+                  },
+                  "contents": [
+                    {
+                      "@id": "urn:azureiot:DeviceManagement:DeviceInformation:manufacturer:1",
+                      "@type": "Property",
+                      "comment": "Company name of the device manufacturer. This could be the same as the name of the original equipment manufacturer (OEM). Ex. Contoso.",
+                      "displayName": {
+                        "en": "Manufacturer"
+                      },
+                      "name": "manufacturer",
+                      "schema": "string"
+                    },
+                    {
+                      "@id": "urn:azureiot:DeviceManagement:DeviceInformation:model:1",
+                      "@type": "Property",
+                      "comment": "Device model name or ID. Ex. Surface Book 2.",
+                      "displayName": {
+                        "en": "Device model"
+                      },
+                      "name": "model",
+                      "schema": "string"
+                    },
+                    {
+                      "@id": "urn:azureiot:DeviceManagement:DeviceInformation:swVersion:1",
+                      "@type": "Property",
+                      "comment": "Version of the software on your device. This could be the version of your firmware. Ex. 1.3.45",
+                      "displayName": {
+                        "en": "Software version"
+                      },
+                      "name": "swVersion",
+                      "schema": "string"
+                    },
+                    {
+                      "@id": "urn:azureiot:DeviceManagement:DeviceInformation:osName:1",
+                      "@type": "Property",
+                      "comment": "Name of the operating system on the device. Ex. Windows 10 IoT Core.",
+                      "displayName": {
+                        "en": "Operating system name"
+                      },
+                      "name": "osName",
+                      "schema": "string"
+                    },
+                    {
+                      "@id": "urn:azureiot:DeviceManagement:DeviceInformation:processorArchitecture:1",
+                      "@type": "Property",
+                      "comment": "Architecture of the processor on the device. Ex. x64 or ARM.",
+                      "displayName": {
+                        "en": "Processor architecture"
+                      },
+                      "name": "processorArchitecture",
+                      "schema": "string"
+                    },
+                    {
+                      "@id": "urn:azureiot:DeviceManagement:DeviceInformation:processorManufacturer:1",
+                      "@type": "Property",
+                      "comment": "Name of the manufacturer of the processor on the device. Ex. Intel.",
+                      "displayName": {
+                        "en": "Processor manufacturer"
+                      },
+                      "name": "processorManufacturer",
+                      "schema": "string"
+                    },
+                    {
+                      "@id": "urn:azureiot:DeviceManagement:DeviceInformation:totalStorage:1",
+                      "@type": "Property",
+                      "comment": "Total available storage on the device in kilobytes. Ex. 2048000 kilobytes.",
+                      "displayName": {
+                        "en": "Total storage"
+                      },
+                      "name": "totalStorage",
+                      "displayUnit": {
+                        "en": "kilobytes"
+                      },
+                      "schema": "long"
+                    },
+                    {
+                      "@id": "urn:azureiot:DeviceManagement:DeviceInformation:totalMemory:1",
+                      "@type": "Property",
+                      "comment": "Total available memory on the device in kilobytes. Ex. 256000 kilobytes.",
+                      "displayName": {
+                        "en": "Total memory"
+                      },
+                      "name": "totalMemory",
+                      "displayUnit": {
+                        "en": "kilobytes"
+                      },
+                      "schema": "long"
+                    }
+                  ]
+                }
+              },
+              {
+                "@id": "urn:keggf4i_:PeabodyIoTCentral:gf480nhj:1",
+                "@type": "InterfaceInstance",
+                "displayName": {
+                  "en": "Peabody Interface"
+                },
+                "name": "Peabody_IoT_Central_5vp",
+                "schema": {
+                  "@id": "urn:rtcv:Peabody_IoT_Central_5vp:1",
+                  "@type": "Interface",
+                  "displayName": {
+                    "en": "Peabody Interface"
+                  },
+                  "contents": [
+                    {
+                      "@id": "urn:rtcv:Peabody_IoT_Central_5vp:tlCameraSystemHeartbeat:1",
+                      "@type": "Telemetry",
+                      "displayName": {
+                        "en": "Camera System Heartbeat"
+                      },
+                      "name": "tlCameraSystemHeartbeat",
+                      "schema": "integer"
+                    },
+                    {
+                      "@id": "urn:rtcv:Peabody_IoT_Central_5vp:tlDetectionCount:1",
+                      "@type": "Telemetry",
+                      "displayName": {
+                        "en": "Detection Count"
+                      },
+                      "name": "tlDetectionCount",
+                      "schema": "integer"
+                    },
+                    {
+                      "@id": "urn:rtcv:Peabody_IoT_Central_5vp:tlAllDetectionsCount:1",
+                      "@type": "Telemetry",
+                      "displayName": {
+                        "en": "All Detections Count"
+                      },
+                      "name": "tlAllDetectionsCount",
+                      "schema": "integer"
+                    },
+                    {
+                      "@id": "urn:rtcv:Peabody_IoT_Central_5vp:tlBatteryLevel:1",
+                      "@type": "Telemetry",
+                      "displayName": {
+                        "en": "Battery Level"
+                      },
+                      "name": "tlBatteryLevel",
+                      "schema": "double"
+                    },
+                    {
+                      "@id": "urn:rtcv:Peabody_IoT_Central_5vp:stInferenceProcessor:1",
+                      "@type": [
+                        "Telemetry",
+                        "SemanticType/State"
+                      ],
+                      "displayName": {
+                        "en": "Inference Processor"
+                      },
+                      "name": "stInferenceProcessor",
+                      "schema": {
+                        "@id": "urn:rtcv:Peabody_IoT_Central_5vp:stInferenceProcessor:jzfeab7q:1",
+                        "@type": "Enum",
+                        "valueSchema": "string",
+                        "enumValues": [
+                          {
+                            "@id": "urn:rtcv:Peabody_IoT_Central_5vp:stInferenceProcessor:jzfeab7q:inactive:1",
+                            "@type": "EnumValue",
+                            "displayName": {
+                              "en": "inactive"
+                            },
+                            "enumValue": "inactive",
+                            "name": "inactive"
+                          },
+                          {
+                            "@id": "urn:rtcv:Peabody_IoT_Central_5vp:stInferenceProcessor:jzfeab7q:active:1",
+                            "@type": "EnumValue",
+                            "displayName": {
+                              "en": "active"
+                            },
+                            "enumValue": "active",
+                            "name": "active"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "@id": "urn:rtcv:Peabody_IoT_Central_5vp:stSession:1",
+                      "@type": [
+                        "Telemetry",
+                        "SemanticType/State"
+                      ],
+                      "displayName": {
+                        "en": "Session"
+                      },
+                      "name": "stSession",
+                      "schema": {
+                        "@id": "urn:rtcv:Peabody_IoT_Central_5vp:stSession:sl0s9qbig:1",
+                        "@type": "Enum",
+                        "valueSchema": "string",
+                        "enumValues": [
+                          {
+                            "@id": "urn:rtcv:Peabody_IoT_Central_5vp:stSession:sl0s9qbig:inactive:1",
+                            "@type": "EnumValue",
+                            "displayName": {
+                              "en": "inactive"
+                            },
+                            "enumValue": "inactive",
+                            "name": "inactive"
+                          },
+                          {
+                            "@id": "urn:rtcv:Peabody_IoT_Central_5vp:stSession:sl0s9qbig:active:1",
+                            "@type": "EnumValue",
+                            "displayName": {
+                              "en": "active"
+                            },
+                            "enumValue": "active",
+                            "name": "active"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "@id": "urn:rtcv:Peabody_IoT_Central_5vp:evSessionLogin:1",
+                      "@type": [
+                        "Telemetry",
+                        "SemanticType/Event"
+                      ],
+                      "displayName": {
+                        "en": "Session Login"
+                      },
+                      "name": "evSessionLogin",
+                      "schema": "string"
+                    },
+                    {
+                      "@id": "urn:rtcv:Peabody_IoT_Central_5vp:evSessionLogout:1",
+                      "@type": [
+                        "Telemetry",
+                        "SemanticType/Event"
+                      ],
+                      "displayName": {
+                        "en": "Session Logout"
+                      },
+                      "name": "evSessionLogout",
+                      "schema": "string"
+                    },
+                    {
+                      "@id": "urn:rtcv:Peabody_IoT_Central_5vp:evVideoModelChange:1",
+                      "@type": [
+                        "Telemetry",
+                        "SemanticType/Event"
+                      ],
+                      "displayName": {
+                        "en": "Video Model Change"
+                      },
+                      "name": "evVideoModelChange",
+                      "schema": "string"
+                    },
+                    {
+                      "@id": "urn:rtcv:Peabody_IoT_Central_5vp:evDeviceRestart:1",
+                      "@type": [
+                        "Telemetry",
+                        "SemanticType/Event"
+                      ],
+                      "displayName": {
+                        "en": "Device Restart"
+                      },
+                      "name": "evDeviceRestart",
+                      "schema": "string"
+                    },
+                    {
+                      "@id": "urn:rtcv:Peabody_IoT_Central_5vp:evQmmfRestart:1",
+                      "@type": [
+                        "Telemetry",
+                        "SemanticType/Event"
+                      ],
+                      "displayName": {
+                        "en": "Qualcomm Service Restart"
+                      },
+                      "name": "evQmmfRestart",
+                      "schema": "string"
+                    },
+                    {
+                      "@id": "urn:rtcv:Peabody_IoT_Central_5vp:evImageProvisionComplete:1",
+                      "@type": [
+                        "Telemetry",
+                        "SemanticType/Event"
+                      ],
+                      "displayName": {
+                        "en": "Image Provision Complete"
+                      },
+                      "name": "evImageProvisionComplete",
+                      "schema": "string"
+                    },
+                    {
+                      "@id": "urn:rtcv:Peabody_IoT_Central_5vp:evInference:1",
+                      "@type": [
+                        "Telemetry",
+                        "SemanticType/Event"
+                      ],
+                      "displayName": {
+                        "en": "Inference"
+                      },
+                      "name": "evInference",
+                      "schema": "string"
+                    },
+                    {
+                      "@id": "urn:rtcv:Peabody_IoT_Central_5vp:rpIpAddress:1",
+                      "@type": "Property",
+                      "displayName": {
+                        "en": "IP Address"
+                      },
+                      "name": "rpIpAddress",
+                      "schema": "string"
+                    },
+                    {
+                      "@id": "urn:rtcv:Peabody_IoT_Central_5vp:rpRtspVideoUrl:1",
+                      "@type": "Property",
+                      "displayName": {
+                        "en": "RTSP Video Url"
+                      },
+                      "name": "rpRtspVideoUrl",
+                      "schema": "string"
+                    },
+                    {
+                      "@id": "urn:rtcv:Peabody_IoT_Central_5vp:rpBitrate:1",
+                      "@type": "Property",
+                      "displayName": {
+                        "en": "Bitrate"
+                      },
+                      "name": "rpBitrate",
+                      "schema": "string"
+                    },
+                    {
+                      "@id": "urn:rtcv:Peabody_IoT_Central_5vp:rpEncoder:1",
+                      "@type": "Property",
+                      "displayName": {
+                        "en": "Encoder"
+                      },
+                      "name": "rpEncoder",
+                      "schema": "string"
+                    },
+                    {
+                      "@id": "urn:rtcv:Peabody_IoT_Central_5vp:rpFps:1",
+                      "@type": "Property",
+                      "displayName": {
+                        "en": "FPS"
+                      },
+                      "name": "rpFps",
+                      "schema": "string"
+                    },
+                    {
+                      "@id": "urn:rtcv:Peabody_IoT_Central_5vp:rpResolution:1",
+                      "@type": "Property",
+                      "displayName": {
+                        "en": "Resolution"
+                      },
+                      "name": "rpResolution",
+                      "schema": "string"
+                    },
+                    {
+                      "@id": "urn:rtcv:Peabody_IoT_Central_5vp:rpImageVersion:1",
+                      "@type": "Property",
+                      "displayName": {
+                        "en": "Image Version"
+                      },
+                      "name": "rpImageVersion",
+                      "schema": "string"
+                    },
+                    {
+                      "@id": "urn:rtcv:Peabody_IoT_Central_5vp:rpImageProvisionStatus:1",
+                      "@type": "Property",
+                      "displayName": {
+                        "en": "Image Provision Status"
+                      },
+                      "name": "rpImageProvisionStatus",
+                      "schema": "string"
+                    },
+                    {
+                      "@id": "urn:rtcv:Peabody_IoT_Central_5vp:rpVideoModelName:1",
+                      "@type": "Property",
+                      "displayName": {
+                        "en": "Video Model Name"
+                      },
+                      "name": "rpVideoModelName",
+                      "schema": "string"
+                    },
+                    {
+                      "@id": "urn:rtcv:Peabody_IoT_Central_5vp:rpFirmwareVersion:1",
+                      "@type": "Property",
+                      "displayName": {
+                        "en": "Firmware Version"
+                      },
+                      "name": "rpFirmwareVersion",
+                      "schema": "string"
+                    },
+                    {
+                      "@id": "urn:rtcv:Peabody_IoT_Central_5vp:rpBatteryLevel:1",
+                      "@type": "Property",
+                      "displayName": {
+                        "en": "Battery Level"
+                      },
+                      "name": "rpBatteryLevel",
+                      "schema": "double"
+                    },
+                    {
+                      "@id": "urn:rtcv:Peabody_IoT_Central_5vp:cmSwitchVisionAiModel:1",
+                      "@type": "Command",
+                      "commandType": "asynchronous",
+                      "request": {
+                        "@id": "urn:rtcv:Peabody_IoT_Central_5vp:cmSwitchVisionAiModel:cmParamVisionModelUrl:1",
+                        "@type": "SchemaField",
+                        "displayName": {
+                          "en": "cmParamVisionModelUrl"
+                        },
+                        "name": "cmParamVisionModelUrl",
+                        "schema": "string"
+                      },
+                      "displayName": {
+                        "en": "Switch Vision AI Model"
+                      },
+                      "name": "cmSwitchVisionAiModel"
+                    },
+                    {
+                      "@id": "urn:rtcv:Peabody_IoT_Central_5vp:cmStartTrainingMode:1",
+                      "@type": "Command",
+                      "commandType": "asynchronous",
+                      "displayName": {
+                        "en": "Start Training Mode"
+                      },
+                      "name": "cmStartTrainingMode"
+                    },
+                    {
+                      "@id": "urn:rtcv:Peabody_IoT_Central_5vp:cmRestartDevice:1",
+                      "@type": "Command",
+                      "commandType": "asynchronous",
+                      "displayName": {
+                        "en": "Restart Device"
+                      },
+                      "name": "cmRestartDevice"
+                    },
+                    {
+                      "@id": "urn:rtcv:Peabody_IoT_Central_5vp:evDataStreamProcessingStarted:1",
+                      "@type": [
+                        "Telemetry",
+                        "SemanticType/Event"
+                      ],
+                      "displayName": {
+                        "en": "Data Stream Processing Started"
+                      },
+                      "name": "evDataStreamProcessingStarted",
+                      "schema": "string"
+                    },
+                    {
+                      "@id": "urn:rtcv:Peabody_IoT_Central_5vp:evDataStreamProcessingStopped:1",
+                      "@type": [
+                        "Telemetry",
+                        "SemanticType/Event"
+                      ],
+                      "displayName": {
+                        "en": "Data Stream Processing Stopped"
+                      },
+                      "name": "evDataStreamProcessingStopped",
+                      "schema": "string"
+                    },
+                    {
+                      "@id": "urn:rtcv:Peabody_IoT_Central_5vp:evDataStreamProcessingError:1",
+                      "@type": [
+                        "Telemetry",
+                        "SemanticType/Event"
+                      ],
+                      "displayName": {
+                        "en": "Data Stream Processing Error"
+                      },
+                      "name": "evDataStreamProcessingError",
+                      "schema": "string"
+                    },
+                    {
+                      "@id": "urn:rtcv:Peabody_IoT_Central_5vp:evVideoStreamProcessingStarted:1",
+                      "@type": [
+                        "Telemetry",
+                        "SemanticType/Event"
+                      ],
+                      "displayName": {
+                        "en": "Video Stream Processing Started"
+                      },
+                      "name": "evVideoStreamProcessingStarted",
+                      "schema": "string"
+                    },
+                    {
+                      "@id": "urn:rtcv:Peabody_IoT_Central_5vp:evVideoStreamProcessingStopped:1",
+                      "@type": [
+                        "Telemetry",
+                        "SemanticType/Event"
+                      ],
+                      "displayName": {
+                        "en": "Video Stream Processing Stopped"
+                      },
+                      "name": "evVideoStreamProcessingStopped",
+                      "schema": "string"
+                    },
+                    {
+                      "@id": "urn:rtcv:Peabody_IoT_Central_5vp:evVideoStreamProcessingError:1",
+                      "@type": [
+                        "Telemetry",
+                        "SemanticType/Event"
+                      ],
+                      "displayName": {
+                        "en": "Video Stream Processing Error"
+                      },
+                      "name": "evVideoStreamProcessingError",
+                      "schema": "string"
+                    }
+                  ]
+                }
+              }
+            ],
+            "displayName": {
+              "en": "Module PeabodyIoTCentral"
+            },
+            "contents": [],
+            "@context": [
+              "http://azureiot.com/v1/contexts/IoTModel.json"
+            ]
+          }
+        ]
+      }
+    ],
+    "@context": [
+      "http://azureiot.com/v1/contexts/IoTModel.json"
+    ]
+  }

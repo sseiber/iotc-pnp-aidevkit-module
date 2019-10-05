@@ -1,0 +1,80 @@
+{
+    "modulesContent": {
+        "$edgeAgent": {
+            "properties.desired": {
+                "modules": {
+                    "PeabodyIoTCentral": {
+                        "settings": {
+                            "image": "<CONTAINERNAME:TAG>",
+                            "createOptions": "{\"HostConfig\":{\"PortBindings\":{\"9010/tcp\":[{\"HostPort\":\"9010\"}]},\"Binds\":[\"/run/systemd:/run/systemd\",\"/var/run/docker.sock:/var/run/docker.sock\",\"/data/misc:/data/misc\",\"/etc/version:/etc/version\",\"/sys/class/power_supply/battery/capacity:/sys/class/power_supply/battery/capacity\"],\"NetworkMode\":\"host\"},\"NetworkingConfig\":{\"EndpointsConfig\":{\"host\":{}}}}"
+                        },
+                        "type": "docker",
+                        "env": {
+                            "videoCaptureSource": {
+                                "value": "rtsp"
+                            },
+                            "DEBUG_TELEMETRY": {
+                                "value": "1"
+                            }
+                        },
+                        "status": "running",
+                        "restartPolicy": "always",
+                        "version": "1.0"
+                    }
+                },
+                "runtime": {
+                    "settings": {
+                        "minDockerVersion": "v1.25",
+                        "registryCredentials": {
+                            "<CONTAINER-REGISTRY-NAME>": {
+                                "address": "<FULL CONTAINER REGISTRY NAME e.g. name.azurecr.io>",
+                                "password": "",
+                                "username": ""
+                            }
+                        }
+                    },
+                    "type": "docker"
+                },
+                "schemaVersion": "1.0",
+                "systemModules": {
+                    "edgeAgent": {
+                        "settings": {
+                            "image": "mcr.microsoft.com/azureiotedge-agent:1.0",
+                            "createOptions": ""
+                        },
+                        "type": "docker"
+                    },
+                    "edgeHub": {
+                        "settings": {
+                            "image": "mcr.microsoft.com/azureiotedge-hub:1.0",
+                            "createOptions": "{\"HostConfig\":{\"PortBindings\":{\"8883/tcp\":[{\"HostPort\":\"8883\"}],\"443/tcp\":[{\"HostPort\":\"443\"}],\"5671/tcp\":[{\"HostPort\":\"5671\"}]}}}"
+                        },
+                        "type": "docker",
+                        "status": "running",
+                        "restartPolicy": "always"
+                    }
+                }
+            }
+        },
+        "$edgeHub": {
+            "properties.desired": {
+                "routes": {
+                    "route": "FROM /messages/* INTO $upstream"
+                },
+                "schemaVersion": "1.0",
+                "storeAndForwardConfiguration": {
+                    "timeToLiveSecs": 7200
+                }
+            }
+        },
+        "PeabodyIoTCentral": {
+            "properties.desired": {
+                "wpHdmiOutput": true,
+                "wpInferenceThreshold": 70,
+                "wpDetectClass": "person",
+                "wpWowzaPlayerLicense": "None",
+                "wpWowzaPlayerVideoSourceUrl": "None"
+            }
+        }
+    }
+}
