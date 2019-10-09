@@ -1,6 +1,6 @@
 {
   "name": "iotc-pnp-aidevkit-module",
-  "version": "3.0.3",
+  "version": "3.0.4",
   "description": "Local service for AI Dev Kit",
   "main": "index.js",
   "scripts": {
@@ -32,7 +32,7 @@
     "compare-versions": "^3.5.1",
     "cookie": "^0.3.1",
     "fs-extra": "^7.0.1",
-    "hapi-auth-jwt2": "8.6.2",
+    "hapi-auth-jwt2": "^8.7.0",
     "ip": "^1.1.5",
     "jsonfile": "^5.0.0",
     "jsonwebtoken": "^8.5.1",
