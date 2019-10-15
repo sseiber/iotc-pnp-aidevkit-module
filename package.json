@@ -1,6 +1,6 @@
 {
   "name": "iotc-pnp-aidevkit-module",
-  "version": "3.0.6",
+  "version": "3.0.7",
   "description": "Local service for AI Dev Kit",
   "main": "index.js",
   "scripts": {
