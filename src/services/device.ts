@@ -4,7 +4,7 @@ import { ConfigService } from './config';
 import { LoggingService } from './logging';
 import {
     IoTCentralService,
-    PeabodyDeviceFieldIds,
+    PeabodyModuleFieldIds,
     ProvisionStatus
 } from './iotcentral';
 import {
@@ -86,7 +86,7 @@ export class DeviceService {
     public async provisionDockerImage(): Promise<void> {
         this.logger.log(['DeviceService', 'info'], `Provisioning docker imgage`);
 
-        await this.iotCentral.updateDeviceProperties({ [PeabodyDeviceFieldIds.Property.ImageStatus]: ProvisionStatus.Installing });
+        await this.iotCentral.updateDeviceProperties({ [PeabodyModuleFieldIds.Property.ImageStatus]: ProvisionStatus.Installing });
 
         const imageVersionFilePath = pathResolve(this.storageFolderPath, 'image.ver');
 
@@ -109,23 +109,23 @@ export class DeviceService {
                     writeFileSync(imageVersionFilePath, { version: this.dockerImageVersion });
 
                     await this.iotCentral.updateDeviceProperties({
-                        [PeabodyDeviceFieldIds.Property.ImageVersion]: this.dockerImageVersion,
-                        [PeabodyDeviceFieldIds.Property.ImageStatus]: ProvisionStatus.Pending,
-                        [PeabodyDeviceFieldIds.Property.FirmwareVersion]: firmwareProperties.firmwareVersion,
-                        [PeabodyDeviceFieldIds.Property.BatteryLevel]: firmwareProperties.batteryLevel
+                        [PeabodyModuleFieldIds.Property.ImageVersion]: this.dockerImageVersion,
+                        [PeabodyModuleFieldIds.Property.ImageStatus]: ProvisionStatus.Pending,
+                        [PeabodyModuleFieldIds.Property.FirmwareVersion]: firmwareProperties.firmwareVersion,
+                        [PeabodyModuleFieldIds.Property.BatteryLevel]: firmwareProperties.batteryLevel
                     });
 
-                    await this.restartDevice('DeviceService:provisionDockerImage:newImage');
-                    // await this.restartQmmfServices('DeviceService:provisionDockerImage:newImage');
+                    // await this.restartDevice('DeviceService:provisionDockerImage:newImage');
+                    // // await this.restartQmmfServices('DeviceService:provisionDockerImage:newImage');
                 }
                 else {
-                    await this.iotCentral.sendMeasurement({ [PeabodyDeviceFieldIds.Event.ImageProvisionComplete]: this.dockerImageVersion });
+                    await this.iotCentral.sendMeasurement({ [PeabodyModuleFieldIds.Event.ImageProvisionComplete]: this.dockerImageVersion });
 
                     await this.iotCentral.updateDeviceProperties({
-                        [PeabodyDeviceFieldIds.Property.ImageVersion]: this.dockerImageVersion,
-                        [PeabodyDeviceFieldIds.Property.ImageStatus]: ProvisionStatus.Completed,
-                        [PeabodyDeviceFieldIds.Property.FirmwareVersion]: firmwareProperties.firmwareVersion,
-                        [PeabodyDeviceFieldIds.Property.BatteryLevel]: firmwareProperties.batteryLevel
+                        [PeabodyModuleFieldIds.Property.ImageVersion]: this.dockerImageVersion,
+                        [PeabodyModuleFieldIds.Property.ImageStatus]: ProvisionStatus.Completed,
+                        [PeabodyModuleFieldIds.Property.FirmwareVersion]: firmwareProperties.firmwareVersion,
+                        [PeabodyModuleFieldIds.Property.BatteryLevel]: firmwareProperties.batteryLevel
                     });
                 }
             }
@@ -136,16 +136,16 @@ export class DeviceService {
                 writeFileSync(imageVersionFilePath, { version: this.dockerImageVersion });
 
                 await this.iotCentral.updateDeviceProperties({
-                    [PeabodyDeviceFieldIds.Property.ImageVersion]: this.dockerImageVersion,
-                    [PeabodyDeviceFieldIds.Property.ImageStatus]: ProvisionStatus.Pending,
-                    [PeabodyDeviceFieldIds.Property.FirmwareVersion]: firmwareProperties.firmwareVersion,
-                    [PeabodyDeviceFieldIds.Property.BatteryLevel]: firmwareProperties.batteryLevel
+                    [PeabodyModuleFieldIds.Property.ImageVersion]: this.dockerImageVersion,
+                    [PeabodyModuleFieldIds.Property.ImageStatus]: ProvisionStatus.Pending,
+                    [PeabodyModuleFieldIds.Property.FirmwareVersion]: firmwareProperties.firmwareVersion,
+                    [PeabodyModuleFieldIds.Property.BatteryLevel]: firmwareProperties.batteryLevel
                 });
 
-                if (this.edgeDeployment !== defaultEdgeDeployment) {
-                    await this.restartDevice('DeviceService:provisionDockerImage:noFile');
-                    // await this.restartQmmfServices('DeviceService:provisionDockerImage:noFile');
-                }
+                // if (this.edgeDeployment !== defaultEdgeDeployment) {
+                //     await this.restartDevice('DeviceService:provisionDockerImage:noFile');
+                //     // await this.restartQmmfServices('DeviceService:provisionDockerImage:noFile');
+                // }
             }
         }
         catch (ex) {
@@ -335,8 +335,8 @@ export class DeviceService {
     public async getHealth(): Promise<number> {
         const firmwareProperties = await this.getFirmwareProperties();
 
-        await this.iotCentral.sendMeasurement({ [PeabodyDeviceFieldIds.Telemetry.BatteryLevel]: firmwareProperties.batteryLevel });
-        await this.iotCentral.updateDeviceProperties({ [PeabodyDeviceFieldIds.Property.BatteryLevel]: firmwareProperties.batteryLevel });
+        await this.iotCentral.sendMeasurement({ [PeabodyModuleFieldIds.Telemetry.BatteryLevel]: firmwareProperties.batteryLevel });
+        await this.iotCentral.updateDeviceProperties({ [PeabodyModuleFieldIds.Property.BatteryLevel]: firmwareProperties.batteryLevel });
 
         return HealthState.Good;
     }
@@ -407,7 +407,7 @@ export class DeviceService {
         this.logger.log(['DeviceService', 'info'], `Restarting Qmmf services...`);
 
         try {
-            await this.iotCentral.sendMeasurement({ [PeabodyDeviceFieldIds.Event.QmmfRestart]: fromService });
+            await this.iotCentral.sendMeasurement({ [PeabodyModuleFieldIds.Event.QmmfRestart]: fromService });
 
             await promisify(exec)(`systemctl restart qmmf-webserver`);
             await promisify(exec)(`systemctl restart ipc-webserver`);
@@ -429,8 +429,8 @@ export class DeviceService {
         this.logger.log(['DeviceService', 'info'], `Scheduling a restart in 30 seconds...`);
 
         try {
-            await this.iotCentral.sendMeasurement({ [PeabodyDeviceFieldIds.Event.DeviceRestart]: fromService });
-            await this.iotCentral.updateDeviceProperties({ [PeabodyDeviceFieldIds.Property.ImageStatus]: ProvisionStatus.Restarting });
+            await this.iotCentral.sendMeasurement({ [PeabodyModuleFieldIds.Event.DeviceRestart]: fromService });
+            await this.iotCentral.updateDeviceProperties({ [PeabodyModuleFieldIds.Property.ImageStatus]: ProvisionStatus.Restarting });
 
             await promisify(exec)(`reboot --reboot`);
 

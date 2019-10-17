@@ -3,16 +3,13 @@
         "$edgeAgent": {
             "properties.desired": {
                 "modules": {
-                    "PeabodyIoTCentral": {
+                    "VisionAIDevKitModule": {
                         "settings": {
                             "image": "<CONTAINERNAME:TAG>",
                             "createOptions": "{\"HostConfig\":{\"PortBindings\":{\"9010/tcp\":[{\"HostPort\":\"9010\"}]},\"Binds\":[\"/run/systemd:/run/systemd\",\"/var/run/docker.sock:/var/run/docker.sock\",\"/data/misc:/data/misc\",\"/etc/version:/etc/version\",\"/sys/class/power_supply/battery/capacity:/sys/class/power_supply/battery/capacity\"],\"NetworkMode\":\"host\"},\"NetworkingConfig\":{\"EndpointsConfig\":{\"host\":{}}}}"
                         },
                         "type": "docker",
                         "env": {
-                            "videoCaptureSource": {
-                                "value": "rtsp"
-                            },
                             "DEBUG_TELEMETRY": {
                                 "value": "1"
                             }
@@ -67,7 +64,7 @@
                 }
             }
         },
-        "PeabodyIoTCentral": {
+        "VisionAIDevKitModule": {
             "properties.desired": {
                 "wpHdmiOutput": true,
                 "wpInferenceThreshold": 70,

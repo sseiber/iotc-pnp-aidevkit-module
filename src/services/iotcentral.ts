@@ -17,7 +17,7 @@ import { SubscriptionService } from './subscription';
 import { LoggingService } from './logging';
 import { ConfigService } from './config';
 import { StateService } from './state';
-import { bind, forget, defer } from '../utils';
+import { bind, defer, emptyObj } from '../utils';
 import { HealthState } from './health';
 import { Mqtt } from 'azure-iot-device-mqtt';
 import {
@@ -35,15 +35,12 @@ export interface ISystemProperties {
     usedMemory: number;
 }
 
-export interface IIotcCameraProperties {
+export interface IPeabodySettings {
     hdmiOutput: boolean;
-    wowzaPlayerLicense: string;
-    wowzaPlayerVideoSourceUrl: string;
-}
-
-export interface IIotcVisionProperties {
     inferenceThreshold: number;
     detectClass: string;
+    wowzaPlayerLicense: string;
+    wowzaPlayerVideoSourceUrl: string;
 }
 
 export const IoTCentralDeviceFieldIds = {
@@ -59,21 +56,21 @@ export const IoTCentralDeviceFieldIds = {
     }
 };
 
-export enum PeabodyDeviceInferenceProcessorState {
+export enum PeabodyInferenceProcessorState {
     Inactive = 'inactive',
     Active = 'active'
 }
 
-export enum PeabodyDeviceSessionState {
+export enum PeabodySessionState {
     Inactive = 'inactive',
     Active = 'active'
 }
 
-export enum DeviceCommandParams {
+export enum SwapModelCommandParams {
     VisionModelUrl = 'cmParamVisionModelUrl'
 }
 
-export const PeabodyDeviceFieldIds = {
+export const PeabodyModuleFieldIds = {
     Telemetry: {
         CameraSystemHeartbeat: 'tlCameraSystemHeartbeat',
         Detections: 'tlDetectionCount',
@@ -163,14 +160,12 @@ export class IoTCentralService {
     private iotcModuleTwin: any = null;
     private iotcClientConnected: boolean = false;
     private iotcTelemetryThrottleTimer: number = Date.now();
-    private iotcCameraPropertiesInternal: IIotcCameraProperties = {
+    private iotcPeabodySettingsInternal: IPeabodySettings = {
         hdmiOutput: true,
+        inferenceThreshold: defaultConfidenceThreshold,
+        detectClass: defaultDetectClass,
         wowzaPlayerLicense: '',
         wowzaPlayerVideoSourceUrl: ''
-    };
-    private iotcVisionPropertiesInternal: IIotcVisionProperties = {
-        inferenceThreshold: defaultConfidenceThreshold,
-        detectClass: defaultDetectClass
     };
 
     public get iotcDeviceId() {
@@ -181,12 +176,8 @@ export class IoTCentralService {
         return this.iotcModuleIdInternal;
     }
 
-    public get iotcCameraProperties() {
-        return this.iotcCameraPropertiesInternal;
-    }
-
-    public get iotcVisionProperties() {
-        return this.iotcVisionPropertiesInternal;
+    public get iotcPeabodySettings() {
+        return this.iotcPeabodySettingsInternal;
     }
 
     public async init(): Promise<void> {
@@ -196,9 +187,6 @@ export class IoTCentralService {
 
         this.iotcDeviceIdInternal = this.config.get('IOTEDGE_DEVICEID') || '';
         this.iotcModuleIdInternal = this.config.get('IOTEDGE_MODULEID') || '';
-
-        this.iotcCameraPropertiesInternal.wowzaPlayerLicense = this.config.get('cloudWowzaPlayerLicense') || '';
-        this.iotcCameraPropertiesInternal.wowzaPlayerVideoSourceUrl = this.config.get('cloudWowzaPlayerVideoSourceUrl') || '';
     }
 
     @bind
@@ -238,13 +226,7 @@ export class IoTCentralService {
             this.logger.log(['IoTCentralService', 'info'], `IOTEDGE_IOTHUBHOSTNAME: ${this.config.get('IOTEDGE_IOTHUBHOSTNAME')}`);
             this.logger.log(['IoTCentralService', 'info'], `IOTEDGE_AUTHSCHEME: ${this.config.get('IOTEDGE_AUTHSCHEME')}`);
 
-            // tslint:disable-next-line:prefer-conditional-expression
-            if (_get(process.env, 'LOCAL_DEBUG') === '1') {
-                this.iotcClient = ModuleClient.fromConnectionString(this.config.get('iotCentralModuleConnectionString') || '', Mqtt);
-            }
-            else {
-                this.iotcClient = await ModuleClient.fromEnvironment(Mqtt);
-            }
+            this.iotcClient = await ModuleClient.fromEnvironment(Mqtt);
         }
         catch (ex) {
             this.logger.log(['IoTCentralService', 'error'], `Failed to instantiate client interface from configuraiton: ${ex.message}`);
@@ -260,16 +242,16 @@ export class IoTCentralService {
 
                 this.iotcClient.on('error', this.onIotcClientError);
 
-                this.iotcClient.onMethod(PeabodyDeviceFieldIds.Command.StartTrainingMode, this.iotcClientStartTraining);
-                this.iotcClient.onMethod(PeabodyDeviceFieldIds.Command.SwitchVisionAiModel, this.iotcClientSwitchVisionAiModel);
-                this.iotcClient.onMethod(PeabodyDeviceFieldIds.Command.RestartDevice, this.iotcClientRestartDevice);
+                this.iotcClient.onMethod(PeabodyModuleFieldIds.Command.StartTrainingMode, this.iotcClientStartTraining);
+                this.iotcClient.onMethod(PeabodyModuleFieldIds.Command.SwitchVisionAiModel, this.iotcClientSwitchVisionAiModel);
+                this.iotcClient.onMethod(PeabodyModuleFieldIds.Command.RestartDevice, this.iotcClientRestartDevice);
 
                 this.logger.log(['IoTCentralService', 'info'], `Getting twin interface...`);
-                this.iotcModuleTwin = await this.iotcClient.getTwinAsync();
+                this.iotcModuleTwin = await this.iotcClient.getTwin();
                 this.logger.log(['IoTCentralService', 'info'], `Connected to module twin...`);
 
                 this.logger.log(['IoTCentralService', 'info'], `Registering for twin updates...`);
-                this.iotcModuleTwin.on('properties.desired', this.onHandleDeviceProperties);
+                this.iotcModuleTwin.on('properties.desired', this.onHandleModuleProperties);
                 this.logger.log(['IoTCentralService', 'info'], `Connected to twin updates...`);
 
                 this.iotcClientConnected = true;
@@ -389,7 +371,7 @@ export class IoTCentralService {
             totalMemory = Number((stdout || '0').trim());
         }
         catch (ex) {
-            this.logger.log(['RTCVService', 'error'], `Exception while accessing /proc/meminfo: ${ex.message}`);
+            this.logger.log(['IoTCentralService', 'error'], `Exception while accessing /proc/meminfo: ${ex.message}`);
         }
 
         try {
@@ -397,7 +379,7 @@ export class IoTCentralService {
             usedMemory = Number((usedMemorySample || '0').trim()) / 1024;
         }
         catch (ex) {
-            this.logger.log(['RTCVService', 'error'], `Exception while accessing /sys/fs/cgroup/memory: ${ex.message}`);
+            this.logger.log(['IoTCentralService', 'error'], `Exception while accessing /sys/fs/cgroup/memory: ${ex.message}`);
         }
 
         return {
@@ -410,9 +392,12 @@ export class IoTCentralService {
     }
 
     @bind
-    private async onHandleDeviceProperties(desiredChangedSettings: any) {
+    private async onHandleModuleProperties(desiredChangedSettings: any) {
         try {
             this.logger.log(['IoTCentralService', 'info'], `Received desiredPropSettings:\n${JSON.stringify(desiredChangedSettings, null, 4)}`);
+
+            let patchedProperties = {};
+
             for (const setting in desiredChangedSettings) {
                 if (!desiredChangedSettings.hasOwnProperty(setting)) {
                     continue;
@@ -422,24 +407,21 @@ export class IoTCentralService {
                     continue;
                 }
 
-                const prop = desiredChangedSettings[setting];
-                // if (!prop.hasOwnProperty('value')) {
-                //     continue;
-                // }
+                const value = desiredChangedSettings[setting];
 
-                const value = prop.value;
                 let changedSettingResult;
 
                 switch (setting) {
-                    case PeabodyDeviceFieldIds.Setting.HdmiOutput:
-                    case PeabodyDeviceFieldIds.Setting.WowzaPlayerLicense:
-                    case PeabodyDeviceFieldIds.Setting.WowzaPlayerVideoSourceUrl:
+                    case PeabodyModuleFieldIds.Setting.HdmiOutput:
+                    case PeabodyModuleFieldIds.Setting.InferenceThreshold:
+                    case PeabodyModuleFieldIds.Setting.DetectClass:
                         changedSettingResult = await this.cameraSettingChange(setting, value);
                         break;
 
-                    case PeabodyDeviceFieldIds.Setting.InferenceThreshold:
-                    case PeabodyDeviceFieldIds.Setting.DetectClass:
-                        changedSettingResult = await this.visionSettingChange(setting, value);
+                    case PeabodyModuleFieldIds.Setting.WowzaPlayerLicense:
+                    case PeabodyModuleFieldIds.Setting.WowzaPlayerVideoSourceUrl:
+                        changedSettingResult = await this.clientSettingChange(setting, value);
+
                         break;
 
                     default:
@@ -447,22 +429,24 @@ export class IoTCentralService {
                         break;
                 }
 
-                if (changedSettingResult) {
-                    const patchedProperty = {
-                        [setting]: {
-                            ...changedSettingResult,
-                            statusCode: 200,
-                            desiredVersion: desiredChangedSettings.$version,
-                            message: 'Succeeded'
-                        }
+                if (_get(changedSettingResult, 'status') === true) {
+                    patchedProperties = {
+                        ...patchedProperties,
+                        [setting]: changedSettingResult.value
                     };
-
-                    await this.updateDeviceProperties(patchedProperty);
                 }
             }
 
-            if (!this.serviceInitializing) {
-                forget((this.server.methods.rtcv as any).startPipeline);
+            if (!this.serviceInitializing && !emptyObj(patchedProperties)) {
+                const result = await (this.server.methods.camera as any).startCamera();
+                if (result === false) {
+                    this.iotcPeabodySettingsInternal.hdmiOutput = false;
+
+                    patchedProperties[PeabodyModuleFieldIds.Setting.HdmiOutput] = false;
+                }
+
+                await this.updateDeviceProperties(patchedProperties);
+
                 this.subscription.publishUpdateConfiguration();
             }
         }
@@ -470,69 +454,73 @@ export class IoTCentralService {
             this.logger.log(['IoTCentralService', 'error'], `Exception while handling desired properties: ${ex.message}`);
         }
 
-        this.deferredStart.resolve();
+        if (this.serviceInitializing) {
+            this.deferredStart.resolve();
+        }
     }
 
-    @bind
     private async cameraSettingChange(setting: string, value: any): Promise<any> {
         this.logger.log(['IoTCentralService', 'info'], `Handle camera setting change for ${setting}: ${value}`);
 
         const result = {
             value,
-            status: 'completed'
+            status: true
         };
 
         switch (setting) {
-            case PeabodyDeviceFieldIds.Setting.HdmiOutput:
-                this.iotcCameraPropertiesInternal.hdmiOutput = value;
-                result.value = await (this.server.methods.camera as any).switchHdmiOutput(value);
+            case PeabodyModuleFieldIds.Setting.HdmiOutput: {
+                result.value = this.iotcPeabodySettingsInternal.hdmiOutput = value;
+                break;
+            }
+
+            case PeabodyModuleFieldIds.Setting.InferenceThreshold:
+                result.value = this.iotcPeabodySettingsInternal.inferenceThreshold = value;
                 break;
 
-            case PeabodyDeviceFieldIds.Setting.WowzaPlayerLicense:
-                this.iotcCameraPropertiesInternal.wowzaPlayerLicense = value === 'None' ? '' : value;
+            case PeabodyModuleFieldIds.Setting.DetectClass:
+                result.value = this.iotcPeabodySettingsInternal.detectClass = value;
                 break;
 
-            case PeabodyDeviceFieldIds.Setting.WowzaPlayerVideoSourceUrl:
-                this.iotcCameraPropertiesInternal.wowzaPlayerVideoSourceUrl = value === 'None' ? '' : value;
+            case PeabodyModuleFieldIds.Setting.WowzaPlayerLicense:
+                result.value = this.iotcPeabodySettingsInternal.wowzaPlayerLicense = value === 'None' ? '' : value;
+                break;
+
+            case PeabodyModuleFieldIds.Setting.WowzaPlayerVideoSourceUrl:
+                result.value = this.iotcPeabodySettingsInternal.wowzaPlayerVideoSourceUrl = value === 'None' ? '' : value;
                 break;
 
             default:
                 this.logger.log(['IoTCentralService', 'info'], `Unknown camera setting change request ${setting}`);
-                result.status = 'error';
+                result.status = false;
         }
 
         if (!result.value) {
-            result.status = 'error';
+            result.status = false;
         }
 
         return result;
     }
 
-    @bind
-    private async visionSettingChange(setting: string, value: any): Promise<any> {
-        this.logger.log(['IoTCentralService', 'info'], `Handle vision setting change for ${setting}: ${value}`);
+    private async clientSettingChange(setting: string, value: any): Promise<{ value: any, status: boolean }> {
+        this.logger.log(['IoTCentralService', 'info'], `Handle client setting change for ${setting}: ${value}`);
 
         const result = {
             value,
-            status: 'completed'
+            status: true
         };
 
         switch (setting) {
-            case PeabodyDeviceFieldIds.Setting.InferenceThreshold:
-                this.iotcVisionPropertiesInternal.inferenceThreshold = value;
+            case PeabodyModuleFieldIds.Setting.WowzaPlayerLicense:
+                result.value = this.iotcPeabodySettingsInternal.wowzaPlayerLicense = value === 'None' ? '' : value;
                 break;
 
-            case PeabodyDeviceFieldIds.Setting.DetectClass:
-                this.iotcVisionPropertiesInternal.detectClass = value;
+            case PeabodyModuleFieldIds.Setting.WowzaPlayerVideoSourceUrl:
+                result.value = this.iotcPeabodySettingsInternal.wowzaPlayerVideoSourceUrl = value === 'None' ? '' : value;
                 break;
 
             default:
-                this.logger.log(['IoTCentralService', 'info'], `Unknown vision setting change request ${setting}`);
-                result.status = 'error';
-        }
-
-        if (!result.value) {
-            result.status = 'error';
+                this.logger.log(['IoTCentralService', 'info'], `Unknown client setting change request ${setting}`);
+                result.status = false;
         }
 
         return result;
@@ -547,24 +535,24 @@ export class IoTCentralService {
     @bind
     // @ts-ignore (commandRequest)
     private async iotcClientStartTraining(commandRequest: DeviceMethodRequest, commandResponse: DeviceMethodResponse) {
-        this.logger.log(['IoTCentralService', 'error'], `${PeabodyDeviceFieldIds.Command.StartTrainingMode} command received`);
+        this.logger.log(['IoTCentralService', 'error'], `${PeabodyModuleFieldIds.Command.StartTrainingMode} command received`);
 
         commandResponse.send(200, (error) => {
             if (error) {
-                this.logger.log(['IoTCentralService', 'error'], `Error sending response for ${PeabodyDeviceFieldIds.Command.StartTrainingMode} command: ${error.toString()}`);
+                this.logger.log(['IoTCentralService', 'error'], `Error sending response for ${PeabodyModuleFieldIds.Command.StartTrainingMode} command: ${error.toString()}`);
             }
         });
     }
 
     @bind
     private async iotcClientSwitchVisionAiModel(iotcRequest: DeviceMethodRequest, iotcResponse: DeviceMethodResponse) {
-        this.logger.log(['IoTCentralService', 'error'], `${PeabodyDeviceFieldIds.Command.SwitchVisionAiModel} command received`);
+        this.logger.log(['IoTCentralService', 'error'], `${PeabodyModuleFieldIds.Command.SwitchVisionAiModel} command received`);
 
-        const fileUrl = _get(iotcRequest, `payload.${DeviceCommandParams.VisionModelUrl}`);
+        const fileUrl = _get(iotcRequest, `payload.${SwapModelCommandParams.VisionModelUrl}`);
 
         iotcResponse.send(fileUrl ? 200 : 400, (error) => {
             if (error) {
-                this.logger.log(['IoTCentralService', 'error'], `Error sending response for ${PeabodyDeviceFieldIds.Command.StartTrainingMode} command: ${error.toString()}`);
+                this.logger.log(['IoTCentralService', 'error'], `Error sending response for ${PeabodyModuleFieldIds.Command.StartTrainingMode} command: ${error.toString()}`);
             }
         });
 
@@ -581,11 +569,11 @@ export class IoTCentralService {
     @bind
     // @ts-ignore (commandRequest)
     private async iotcClientRestartDevice(commandRequest: DeviceMethodRequest, commandResponse: DeviceMethodResponse) {
-        this.logger.log(['IoTCentralService', 'error'], `${PeabodyDeviceFieldIds.Command.RestartDevice} command received`);
+        this.logger.log(['IoTCentralService', 'error'], `${PeabodyModuleFieldIds.Command.RestartDevice} command received`);
 
         commandResponse.send(200, (error) => {
             if (error) {
-                this.logger.log(['IoTCentralService', 'error'], `Error sending response for ${PeabodyDeviceFieldIds.Command.StartTrainingMode} command: ${error.toString()}`);
+                this.logger.log(['IoTCentralService', 'error'], `Error sending response for ${PeabodyModuleFieldIds.Command.StartTrainingMode} command: ${error.toString()}`);
             }
         });
 

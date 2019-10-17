@@ -1,0 +1,15 @@
+{
+    "system": {
+        "systemName": "",
+        "systemId": ""
+    },
+    "iotCentral": {
+        "properties": {
+            "manufacturer": "",
+            "model": "",
+            "totalStorage": "STORGE_SIZE_IN_BYTES",
+            "storageDirectory": "/data/misc/storage",
+            "gpuProcessor": "NA"
+        }
+    }
+}

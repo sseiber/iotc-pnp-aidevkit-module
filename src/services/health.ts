@@ -33,7 +33,7 @@ export class HealthService {
     public async init() {
         this.logger.log(['HealthService', 'info'], 'initialize');
 
-        if (_get(process.env, 'LOCAL_DEBUG') === '1') {
+        if (_get(process.env, 'LOCAL_DEBUG') === '1' || _get(process.env, 'FORCE_HEALTHCHECK') === '1') {
             setInterval(() => {
                 forget(this.checkHealthState);
             }, (1000 * healthCheckInterval));
@@ -45,7 +45,7 @@ export class HealthService {
         const cameraHealth = await this.camera.getHealth();
 
         if (cameraHealth < HealthState.Good) {
-            this.logger.log(['HealthService', 'info'], `Health check watch: camera:${cameraHealth}`);
+            this.logger.log(['HealthService', 'warning'], `Health check watch: camera:${cameraHealth}`);
 
             if ((Date.now() - this.heathCheckStartTime) > (1000 * healthCheckStartPeriod) && ++this.failingStreak >= healthCheckRetries) {
                 await (this.server.methods.device as any).restartDevice('HealthService:checkHealthState');

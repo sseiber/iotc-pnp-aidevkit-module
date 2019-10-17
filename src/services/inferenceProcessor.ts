@@ -6,7 +6,7 @@ import { DataStreamController } from '../services/dataStreamProcessor';
 import { VideoStreamController } from '../services/videoStreamProcessor';
 import {
     IoTCentralService,
-    PeabodyDeviceFieldIds
+    PeabodyModuleFieldIds
 } from '../services/iotcentral';
 import { sleep, bind } from '../utils';
 import * as _get from 'lodash.get';
@@ -45,8 +45,8 @@ export class InferenceProcessorService {
         this.server.method({ name: 'inferenceProcessor.dataInference', method: this.handleDataInference });
         this.server.method({ name: 'inferenceProcessor.videoFrame', method: this.handleVideoFrame });
 
-        this.inferenceThreshold = Number(this.iotCentral.iotcVisionProperties.inferenceThreshold) || defaultInferenceThreshold;
-        this.detectClass = this.iotCentral.iotcVisionProperties.detectClass || defaultDetectClass;
+        this.inferenceThreshold = Number(this.iotCentral.iotcPeabodySettings.inferenceThreshold) || defaultInferenceThreshold;
+        this.detectClass = this.iotCentral.iotcPeabodySettings.detectClass || defaultDetectClass;
     }
 
     public async startInferenceProcessor(rtspDataUrl: string, rtspVideoUrl: string) {
@@ -136,9 +136,9 @@ export class InferenceProcessorService {
 
         await this.iotCentral.sendInferenceData(
             {
-                [PeabodyDeviceFieldIds.Telemetry.AllDetections]: inference.inferences.length,
-                [PeabodyDeviceFieldIds.Telemetry.Detections]: detectClassCount,
-                [PeabodyDeviceFieldIds.Event.Inference]: classes.join(', ')
+                [PeabodyModuleFieldIds.Telemetry.AllDetections]: inference.inferences.length,
+                [PeabodyModuleFieldIds.Telemetry.Detections]: detectClassCount,
+                [PeabodyModuleFieldIds.Event.Inference]: classes.join(', ')
             }
         );
     }
