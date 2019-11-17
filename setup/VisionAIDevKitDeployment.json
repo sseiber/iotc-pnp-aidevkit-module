@@ -5,7 +5,7 @@
                 "modules": {
                     "VisionAIDevKitModule": {
                         "settings": {
-                            "image": "<CONTAINERNAME:TAG>",
+                            "image": "<YOUR_IMAGE_NAME>",
                             "createOptions": "{\"HostConfig\":{\"PortBindings\":{\"9010/tcp\":[{\"HostPort\":\"9010\"}]},\"Binds\":[\"/run/systemd:/run/systemd\",\"/var/run/docker.sock:/var/run/docker.sock\",\"/data/misc:/data/misc\",\"/etc/version:/etc/version\",\"/sys/class/power_supply/battery/capacity:/sys/class/power_supply/battery/capacity\"],\"NetworkMode\":\"host\"},\"NetworkingConfig\":{\"EndpointsConfig\":{\"host\":{}}}}"
                         },
                         "type": "docker",
@@ -24,9 +24,9 @@
                         "minDockerVersion": "v1.25",
                         "registryCredentials": {
                             "<CONTAINER-REGISTRY-NAME>": {
-                                "address": "<FULL CONTAINER REGISTRY NAME e.g. name.azurecr.io>",
-                                "password": "",
-                                "username": ""
+                                "address": "<CONTAINER_REGISTRY_ADDRESS>",
+                                "password": "<CONTAINER_REGISTRY_PASSWORD>",
+                                "username": "<CONTAINER_REGISTRY_USERNAME>"
                             }
                         }
                     },

@@ -1,3 +1,4 @@
 {
+    "arch": "arm32v7",
     "imageName": "<container-registry>/<container-name>"
 }

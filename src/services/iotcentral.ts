@@ -10,15 +10,13 @@ import {
     freemem as osFreeMem,
     loadavg as osLoadAvg
 } from 'os';
-import { promisify } from 'util';
-import { exec } from 'child_process';
-import * as fse from 'fs-extra';
 import { SubscriptionService } from './subscription';
 import { LoggingService } from './logging';
 import { ConfigService } from './config';
 import { StateService } from './state';
 import { bind, defer, emptyObj } from '../utils';
 import { HealthState } from './health';
+import { ICameraResult } from './camera';
 import { Mqtt } from 'azure-iot-device-mqtt';
 import {
     ModuleClient,
@@ -32,7 +30,7 @@ export interface ISystemProperties {
     cpuCores: number;
     cpuUsage: number;
     totalMemory: number;
-    usedMemory: number;
+    freeMemory: number;
 }
 
 export interface IPeabodySettings {
@@ -44,7 +42,7 @@ export interface IPeabodySettings {
 }
 
 export const IoTCentralDeviceFieldIds = {
-    Properties: {
+    Property: {
         Manufacturer: 'manufacturer',
         Model: 'model',
         SwVersion: 'swVersion',
@@ -75,7 +73,8 @@ export const PeabodyModuleFieldIds = {
         CameraSystemHeartbeat: 'tlCameraSystemHeartbeat',
         Detections: 'tlDetectionCount',
         AllDetections: 'tlAllDetectionsCount',
-        BatteryLevel: 'tlBatteryLevel'
+        BatteryLevel: 'tlBatteryLevel',
+        FreeMemory: 'rpFreeMemory'
     },
     State: {
         InferenceProcessor: 'stInferenceProcessor',
@@ -131,7 +130,7 @@ export const ProvisionStatus = {
 };
 
 const defaultConfidenceThreshold: number = 70;
-const defaultDetectClass: string = 'person';
+const defaultDetectClass: string = 'PERSON';
 
 @service('iotCentral')
 export class IoTCentralService {
@@ -194,9 +193,13 @@ export class IoTCentralService {
         let result = true;
 
         try {
+            this.logger.log(['IoTCentralService', 'info'], `Starting client connection sequence...`);
+
             result = await this.connectIotcClient();
 
             await this.deferredStart.promise;
+
+            this.logger.log(['IoTCentralService', 'info'], `Finished client connection sequence...`);
         }
         catch (ex) {
             result = false;
@@ -260,11 +263,11 @@ export class IoTCentralService {
 
                 const deviceProperties = {
                     ...this.state.iotCentral.properties,
-                    [IoTCentralDeviceFieldIds.Properties.OsName]: osPlatform() || '',
-                    [IoTCentralDeviceFieldIds.Properties.SwVersion]: osRelease() || '',
-                    [IoTCentralDeviceFieldIds.Properties.ProcessorArchitecture]: osArch() || '',
-                    [IoTCentralDeviceFieldIds.Properties.ProcessorManufacturer]: systemProperties.cpuModel,
-                    [IoTCentralDeviceFieldIds.Properties.TotalMemory]: systemProperties.totalMemory
+                    [IoTCentralDeviceFieldIds.Property.OsName]: osPlatform() || '',
+                    [IoTCentralDeviceFieldIds.Property.SwVersion]: osRelease() || '',
+                    [IoTCentralDeviceFieldIds.Property.ProcessorArchitecture]: osArch() || '',
+                    [IoTCentralDeviceFieldIds.Property.ProcessorManufacturer]: systemProperties.cpuModel,
+                    [IoTCentralDeviceFieldIds.Property.TotalMemory]: systemProperties.totalMemory
                 };
                 this.logger.log(['IoTCentralService', 'info'], `Updating device properties: ${JSON.stringify(deviceProperties, null, 4)}`);
 
@@ -319,7 +322,6 @@ export class IoTCentralService {
         }
     }
 
-    @bind
     public async updateDeviceProperties(properties: any): Promise<void> {
         if (!properties || !this.iotcClientConnected) {
             return;
@@ -351,43 +353,12 @@ export class IoTCentralService {
         const cpus = osCpus();
         const cpuUsageSamples = osLoadAvg();
 
-        if (_get(process.env, 'LOCAL_DEBUG') === '1') {
-            const nodeTotalMemory = osTotalMem() / 1024;
-            const nodeUsedMemory = nodeTotalMemory - (osFreeMem() / 1024);
-            return {
-                cpuModel: Array.isArray(cpus) ? cpus[0].model : '',
-                cpuCores: Array.isArray(cpus) ? cpus.length : 0,
-                cpuUsage: cpuUsageSamples[0],
-                totalMemory: nodeTotalMemory,
-                usedMemory: nodeUsedMemory
-            };
-        }
-
-        let totalMemory = 0;
-        let usedMemory = 0;
-
-        try {
-            const { stdout } = await promisify(exec)(`cat /proc/meminfo | awk '/MemTotal:/{print $2}'`);
-            totalMemory = Number((stdout || '0').trim());
-        }
-        catch (ex) {
-            this.logger.log(['IoTCentralService', 'error'], `Exception while accessing /proc/meminfo: ${ex.message}`);
-        }
-
-        try {
-            const usedMemorySample = await fse.readFile('/sys/fs/cgroup/memory/memory.usage_in_bytes', 'utf8');
-            usedMemory = Number((usedMemorySample || '0').trim()) / 1024;
-        }
-        catch (ex) {
-            this.logger.log(['IoTCentralService', 'error'], `Exception while accessing /sys/fs/cgroup/memory: ${ex.message}`);
-        }
-
         return {
             cpuModel: Array.isArray(cpus) ? cpus[0].model : '',
             cpuCores: Array.isArray(cpus) ? cpus.length : 0,
             cpuUsage: cpuUsageSamples[0],
-            totalMemory,
-            usedMemory
+            totalMemory: osTotalMem() / 1024,
+            freeMemory: osFreeMem() / 1024
         };
     }
 
@@ -407,7 +378,11 @@ export class IoTCentralService {
                     continue;
                 }
 
-                const value = desiredChangedSettings[setting];
+                const value = _get(desiredChangedSettings, `${setting}.value`);
+                if (!value) {
+                    this.logger.log(['IoTCentralService', 'info'], `Skipping setting (no value set): ${setting}`);
+                    continue;
+                }
 
                 let changedSettingResult;
 
@@ -478,7 +453,7 @@ export class IoTCentralService {
                 break;
 
             case PeabodyModuleFieldIds.Setting.DetectClass:
-                result.value = this.iotcPeabodySettingsInternal.detectClass = value;
+                result.value = this.iotcPeabodySettingsInternal.detectClass = (value as string).toUpperCase();
                 break;
 
             case PeabodyModuleFieldIds.Setting.WowzaPlayerLicense:
@@ -535,47 +510,48 @@ export class IoTCentralService {
     @bind
     // @ts-ignore (commandRequest)
     private async iotcClientStartTraining(commandRequest: DeviceMethodRequest, commandResponse: DeviceMethodResponse) {
-        this.logger.log(['IoTCentralService', 'error'], `${PeabodyModuleFieldIds.Command.StartTrainingMode} command received`);
+        this.logger.log(['IoTCentralService', 'info'], `${PeabodyModuleFieldIds.Command.StartTrainingMode} command received`);
 
-        commandResponse.send(200, (error) => {
-            if (error) {
-                this.logger.log(['IoTCentralService', 'error'], `Error sending response for ${PeabodyModuleFieldIds.Command.StartTrainingMode} command: ${error.toString()}`);
-            }
-        });
+        try {
+            await commandResponse.send(200);
+        }
+        catch (ex) {
+            this.logger.log(['IoTCentralService', 'error'], `Error sending response for ${PeabodyModuleFieldIds.Command.StartTrainingMode} command: ${ex.message}`);
+        }
     }
 
     @bind
-    private async iotcClientSwitchVisionAiModel(iotcRequest: DeviceMethodRequest, iotcResponse: DeviceMethodResponse) {
-        this.logger.log(['IoTCentralService', 'error'], `${PeabodyModuleFieldIds.Command.SwitchVisionAiModel} command received`);
+    private async iotcClientSwitchVisionAiModel(commandRequest: DeviceMethodRequest, commandResponse: DeviceMethodResponse) {
+        this.logger.log(['IoTCentralService', 'info'], `${PeabodyModuleFieldIds.Command.SwitchVisionAiModel} command received`);
+        this.logger.log(['IoTCentralService', 'info'], `${JSON.stringify(commandRequest, null, 4)}`);
 
-        const fileUrl = _get(iotcRequest, `payload.${SwapModelCommandParams.VisionModelUrl}`);
+        let status = false;
 
-        iotcResponse.send(fileUrl ? 200 : 400, (error) => {
-            if (error) {
-                this.logger.log(['IoTCentralService', 'error'], `Error sending response for ${PeabodyModuleFieldIds.Command.StartTrainingMode} command: ${error.toString()}`);
-            }
-        });
-
-        if (fileUrl) {
-            try {
-                await (this.server.methods.camera as any).switchVisionAiModel({ type: 'url', fileUrl });
-            }
-            catch {
-                this.logger.log(['IoTCentralService', 'error'], `An exception occurred while trying to switch the vision ai model`);
+        try {
+            const fileUrl = _get(commandRequest, `payload.${SwapModelCommandParams.VisionModelUrl}`);
+            if (fileUrl) {
+                const result = await (this.server.methods.camera as any).switchVisionAiModel({ type: 'url', fileUrl }) as ICameraResult;
+                status = result.status;
             }
         }
+        catch (ex) {
+            this.logger.log(['IoTCentralService', 'error'], `An exception occurred while trying to switch the vision ai model`);
+        }
+
+        await commandResponse.send(status === true ? 200 : 400);
     }
 
     @bind
     // @ts-ignore (commandRequest)
     private async iotcClientRestartDevice(commandRequest: DeviceMethodRequest, commandResponse: DeviceMethodResponse) {
-        this.logger.log(['IoTCentralService', 'error'], `${PeabodyModuleFieldIds.Command.RestartDevice} command received`);
+        this.logger.log(['IoTCentralService', 'info'], `${PeabodyModuleFieldIds.Command.RestartDevice} command received`);
 
-        commandResponse.send(200, (error) => {
-            if (error) {
-                this.logger.log(['IoTCentralService', 'error'], `Error sending response for ${PeabodyModuleFieldIds.Command.StartTrainingMode} command: ${error.toString()}`);
-            }
-        });
+        try {
+            await commandResponse.send(200);
+        }
+        catch (ex) {
+            this.logger.log(['IoTCentralService', 'error'], `Error sending response for ${PeabodyModuleFieldIds.Command.RestartDevice} command: ${ex.message}`);
+        }
 
         await (this.server.methods.device as any).restartDevice('IoTCentralService:iotcClientRestartCommand');
     }

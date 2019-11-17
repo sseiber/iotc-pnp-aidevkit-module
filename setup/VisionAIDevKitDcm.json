@@ -23,14 +23,13 @@
                     "@type": "CapabilityModel",
                     "implements": [
                         {
-                            "@id": "urn:AzureIoT:AI:VisionAIDevKitModule:uijqfnxac:1",
                             "@type": "InterfaceInstance",
                             "displayName": {
                                 "en": "Settings"
                             },
                             "name": "Settings",
                             "schema": {
-                                "@id": "urn:AzureIoT:AI:Settings:1",
+                                "@id": "urn:AzureIoT:AI:VisionAIDevKitModule:ISettings:1",
                                 "@type": "Interface",
                                 "displayName": {
                                     "en": "Settings"
@@ -85,7 +84,6 @@
                             }
                         },
                         {
-                            "@id": "urn:AzureIoT:AI:VisionAIDevKitModule:d5xrrfqz:1",
                             "@type": "InterfaceInstance",
                             "name": "DeviceInformation",
                             "displayName": {
@@ -180,14 +178,13 @@
                             }
                         },
                         {
-                            "@id": "urn:AzureIoT:AI:VisionAIDevKitModule:gf480nhj:1",
                             "@type": "InterfaceInstance",
                             "name": "ModuleInformation",
                             "displayName": {
                                 "en": "Module Information"
                             },
                             "schema": {
-                                "@id": "urn:AzureIoT:AI:ModuleInformation:1",
+                                "@id": "urn:AzureIoT:AI:VisionAIDevKitModule:IModuleInformation:1",
                                 "@type": "Interface",
                                 "displayName": {
                                     "en": "Module Information"
@@ -453,6 +450,14 @@
                                         },
                                         "name": "rpBatteryLevel",
                                         "schema": "double"
+                                    },
+                                    {
+                                        "@type": "Property",
+                                        "displayName": {
+                                            "en": "Free Memory"
+                                        },
+                                        "name": "rpFreeMemory",
+                                        "schema": "long"
                                     },
                                     {
                                         "@type": "Command",

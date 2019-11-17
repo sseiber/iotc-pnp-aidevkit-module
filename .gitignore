@@ -78,5 +78,4 @@ coverage.html
 # AI Dev Kit local service
 client
 configs/**
-peabody*/**
-
+storage*/**

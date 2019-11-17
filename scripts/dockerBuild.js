@@ -13,9 +13,11 @@ const processArgs = require('commander')
 
 const workspaceRootFolder = processArgs.workspaceRoot || process.cwd();
 
-async function execDockerBuild(dockerImage) {
+async function execDockerBuild(dockerArch, dockerImage) {
     const dockerArgs = [
         'build',
+        '-f',
+        `docker/${dockerArch}.Dockerfile`,
         '-t',
         dockerImage,
         '.'
@@ -40,13 +42,14 @@ async function start() {
         const imageConfigFilePath = path.resolve(workspaceRootFolder, `configs/imageConfig.json`);
         const imageConfig = fse.readJSONSync(imageConfigFilePath);
         const dockerVersion = process.env.npm_package_version || processArgs.imageVersion || 'latest';
-        const dockerImage = `${imageConfig.imageName}:${dockerVersion}`;
+        const dockerArch = imageConfig.arch || '';
+        const dockerImage = `${imageConfig.imageName}:${dockerVersion}-${dockerArch}`;
 
         console.log(`Docker image: ${dockerImage}`);
         console.log(`Platform: ${os.type()}`);
     
         if (processArgs.dockerBuild) {
-            await execDockerBuild(dockerImage);
+            await execDockerBuild(dockerArch, dockerImage);
         }
 
         if (processArgs.dockerPush) {

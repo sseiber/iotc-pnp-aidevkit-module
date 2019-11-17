@@ -5,11 +5,11 @@
     },
     "iotCentral": {
         "properties": {
-            "manufacturer": "",
-            "model": "",
-            "totalStorage": "STORGE_SIZE_IN_BYTES",
+            "manufacturer": "Microsoft",
+            "model": "Vision AI Development Kit",
+            "totalStorage": "16777216",
             "storageDirectory": "/data/misc/storage",
-            "gpuProcessor": "NA"
+            "gpuProcessor": "Qualcomm QCS603"
         }
     }
 }

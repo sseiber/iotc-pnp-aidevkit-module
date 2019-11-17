@@ -426,7 +426,7 @@ export class DeviceService {
         }
 
         // wait here for 5 minutes while we signal a reboot
-        this.logger.log(['DeviceService', 'info'], `Scheduling a restart in 30 seconds...`);
+        this.logger.log(['DeviceService', 'info'], `Scheduling a restart...`);
 
         try {
             await this.iotCentral.sendMeasurement({ [PeabodyModuleFieldIds.Event.DeviceRestart]: fromService });
@@ -434,13 +434,7 @@ export class DeviceService {
 
             await promisify(exec)(`reboot --reboot`);
 
-            await new Promise((resolve) => {
-                setTimeout(() => {
-                    resolve();
-                }, (1000 * 30));
-            });
-
-            this.logger.log(['DeviceService', 'info'], `Failed to auto-restart after 30 seconds... Container will restart now.`);
+            this.logger.log(['DeviceService', 'info'], `Failed to auto-restart... Container will restart now.`);
         }
         catch (ex) {
             this.logger.log(['DeviceService', 'error'], `Failed to auto-restart device - will exit container now: ${ex.message}`);
