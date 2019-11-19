@@ -6,13 +6,10 @@ import { DataStreamController } from '../services/dataStreamProcessor';
 import { VideoStreamController } from '../services/videoStreamProcessor';
 import {
     IoTCentralService,
-    PeabodyDeviceFieldIds
+    PeabodyModuleFieldIds
 } from '../services/iotcentral';
 import { sleep, bind } from '../utils';
 import * as _get from 'lodash.get';
-
-const defaultInferenceThreshold: number = 70;
-const defaultDetectClass: string = 'person';
 
 @service('inferenceProcessor')
 export class InferenceProcessorService {
@@ -36,17 +33,12 @@ export class InferenceProcessorService {
 
     private inferenceCount: number = 0;
     private lastImageData: Buffer = null;
-    private inferenceThreshold: number = defaultInferenceThreshold;
-    private detectClass: string = defaultDetectClass;
 
     public async init(): Promise<void> {
         this.logger.log(['InferenceProcessor', 'info'], 'initialize');
 
         this.server.method({ name: 'inferenceProcessor.dataInference', method: this.handleDataInference });
         this.server.method({ name: 'inferenceProcessor.videoFrame', method: this.handleVideoFrame });
-
-        this.inferenceThreshold = Number(this.iotCentral.iotcVisionProperties.inferenceThreshold) || defaultInferenceThreshold;
-        this.detectClass = this.iotCentral.iotcVisionProperties.detectClass || defaultDetectClass;
     }
 
     public async startInferenceProcessor(rtspDataUrl: string, rtspVideoUrl: string) {
@@ -69,18 +61,20 @@ export class InferenceProcessorService {
         const inferences = _get(inference, 'objects');
 
         if (inferences && Array.isArray(inferences)) {
-            for (const inferenceItem of inferences) {
-                if (_get(inferenceItem, 'display_name') !== 'Negative') {
-                    this.logger.log(['InferenceProcessor', 'info'], `Inference: `
-                        + `id:${_get(inferenceItem, 'id')} `
-                        + `"${_get(inferenceItem, 'display_name')}" `
-                        + `${_get(inferenceItem, 'confidence')}% `);
+            if (_get(process.env, 'DEBUG_INFERENCE') === '1') {
+                for (const inferenceItem of inferences) {
+                    if (_get(inferenceItem, 'display_name') !== 'Negative') {
+                        this.logger.log(['InferenceProcessor', 'info'], `Inference: `
+                            + `id:${_get(inferenceItem, 'id')} `
+                            + `"${_get(inferenceItem, 'display_name')}" `
+                            + `${_get(inferenceItem, 'confidence')}% `);
+                    }
                 }
             }
 
             const publishedInferences = inferences.reduce((publishedItems, inferenceItem) => {
                 const confidence = Number(_get(inferenceItem, 'confidence') || 0);
-                if (_get(inferenceItem, 'display_name') !== 'Negative' && confidence >= this.inferenceThreshold) {
+                if (_get(inferenceItem, 'display_name') !== 'Negative' && confidence >= this.iotCentral.iotcPeabodySettings.inferenceThreshold) {
                     publishedItems.push({
                         count: this.inferenceCount++,
                         ...inferenceItem
@@ -125,9 +119,9 @@ export class InferenceProcessorService {
 
         let detectClassCount = 0;
         const classes = inference.inferences.map(inferenceItem => {
-            const className = _get(inferenceItem, 'display_name');
+            const className = (_get(inferenceItem, 'display_name') || '');
 
-            if (className === this.detectClass) {
+            if (className.toUpperCase() === this.iotCentral.iotcPeabodySettings.detectClass) {
                 detectClassCount++;
             }
 
@@ -136,9 +130,9 @@ export class InferenceProcessorService {
 
         await this.iotCentral.sendInferenceData(
             {
-                [PeabodyDeviceFieldIds.Telemetry.AllDetections]: inference.inferences.length,
-                [PeabodyDeviceFieldIds.Telemetry.Detections]: detectClassCount,
-                [PeabodyDeviceFieldIds.Event.Inference]: classes.join(', ')
+                [PeabodyModuleFieldIds.Telemetry.AllDetections]: inference.inferences.length,
+                [PeabodyModuleFieldIds.Telemetry.Detections]: detectClassCount,
+                [PeabodyModuleFieldIds.Event.Inference]: classes.join(', ')
             }
         );
     }

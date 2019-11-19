@@ -24,7 +24,7 @@
             "env": {
                 "NODE_ENV": "local",
                 "PORT": "9010",
-                "DATAMISC_ROOT": "${workspaceFolder}/peabody",
+                "DATAMISC_ROOT": "${workspaceFolder}",
                 "LOCAL_DEBUG": "1",
                 "DEBUG_TELEMETRY": "1"
             }

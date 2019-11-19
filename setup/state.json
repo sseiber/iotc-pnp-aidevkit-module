@@ -1,0 +1,15 @@
+{
+    "system": {
+        "systemName": "",
+        "systemId": ""
+    },
+    "iotCentral": {
+        "properties": {
+            "manufacturer": "Microsoft",
+            "model": "Vision AI Development Kit",
+            "totalStorage": "16777216",
+            "storageDirectory": "/data/misc/storage",
+            "gpuProcessor": "Qualcomm QCS603"
+        }
+    }
+}

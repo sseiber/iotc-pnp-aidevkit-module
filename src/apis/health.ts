@@ -3,6 +3,7 @@ import { Request, ResponseToolkit } from '@hapi/hapi';
 import { HealthService } from '../services/health';
 import { SubscriptionService } from '../services/subscription';
 import * as Boom from '@hapi/boom';
+import * as _get from 'lodash.get';
 
 export class HealthRoutes extends RoutePlugin {
     @inject('health')

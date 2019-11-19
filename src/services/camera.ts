@@ -14,12 +14,20 @@ import { InferenceProcessorService } from '../services/inferenceProcessor';
 import { DeviceService } from './device';
 import {
     IoTCentralService,
-    PeabodyDeviceSessionState,
-    PeabodyDeviceInferenceProcessorState,
-    PeabodyDeviceFieldIds
+    PeabodySessionState,
+    PeabodyInferenceProcessorState,
+    PeabodyModuleFieldIds
 } from '../services/iotcentral';
 import { bind, sleep, forget } from '../utils';
 import { HealthState } from './health';
+
+interface ICameraSettings {
+    resolutionVal: number;
+    encodeModeVal: number;
+    bitRateVal: number;
+    fpsVal: number;
+    vamProcessing: boolean;
+}
 
 export interface ICameraResult {
     status: boolean;
@@ -103,13 +111,12 @@ export class CameraService extends EventEmitter {
     private rtspVideoUrl: string = '';
     private rtspVamUrl: string = '';
     private modelFile: string = '';
-    private currentCameraSettings: any;
+    private currentCameraSettings: ICameraSettings;
 
     public async init(): Promise<void> {
         this.logger.log(['CameraService', 'info'], 'initialize');
 
         this.server.method({ name: 'camera.startCamera', method: this.startCamera });
-        this.server.method({ name: 'camera.switchHdmiOutput', method: this.switchHdmiOutput });
         this.server.method({ name: 'camera.switchVisionAiModel', method: this.handleSwitchVisionAiModel });
 
         this.cameraUserName = this.config.get('cameraUsername') || defaultCameraUsername;
@@ -121,14 +128,15 @@ export class CameraService extends EventEmitter {
             encodeModeVal: Number(this.config.get('cameraEncodeModeVal')) || defaultencodeModeSelectVal,
             bitRateVal: Number(this.config.get('cameraBitRateVal')) || defaultbitRateSelectVal,
             fpsVal: Number(this.config.get('cameraFpsVal')) || defaultfpsSelectVal,
-            videoPreview: true,
             vamProcessing: true
         };
     }
 
     @bind
-    public async startCamera(): Promise<void> {
-        await this.createCameraSession();
+    public async startCamera(): Promise<boolean> {
+        const result = await this.createCameraSession();
+
+        return result.status;
     }
 
     public async createCameraSession(): Promise<ICameraResult> {
@@ -163,6 +171,7 @@ export class CameraService extends EventEmitter {
             this.logger.log(['CameraService', 'error'], `Error during initialization, logging out`);
 
             const result = await this.destroyCameraSession();
+
             return {
                 ...result,
                 status,
@@ -173,7 +182,7 @@ export class CameraService extends EventEmitter {
         else {
             this.subscription.publishCreateSession();
 
-            await this.iotCentral.sendMeasurement({ [PeabodyDeviceFieldIds.Event.SessionLogin]: this.sessionToken });
+            await this.iotCentral.sendMeasurement({ [PeabodyModuleFieldIds.Event.SessionLogin]: this.sessionToken });
 
             return {
                 ...this.getConfiguration(),
@@ -202,7 +211,7 @@ export class CameraService extends EventEmitter {
                     await (this.server.methods.device as any).restartQmmfServices(`CameraService:destroyCameraSession`);
                 }
 
-                await this.iotCentral.sendMeasurement({ [PeabodyDeviceFieldIds.Event.SessionLogout]: this.sessionToken });
+                await this.iotCentral.sendMeasurement({ [PeabodyModuleFieldIds.Event.SessionLogout]: this.sessionToken });
             }
 
             status = true;
@@ -220,9 +229,9 @@ export class CameraService extends EventEmitter {
         this.subscription.publishDestroySession();
 
         await this.iotCentral.sendMeasurement({
-            [PeabodyDeviceFieldIds.Setting.HdmiOutput]: 0,
-            [PeabodyDeviceFieldIds.State.InferenceProcessor]: PeabodyDeviceInferenceProcessorState.Inactive,
-            [PeabodyDeviceFieldIds.State.Session]: PeabodyDeviceSessionState.Inactive
+            [PeabodyModuleFieldIds.Setting.HdmiOutput]: 0,
+            [PeabodyModuleFieldIds.State.InferenceProcessor]: PeabodyInferenceProcessorState.Inactive,
+            [PeabodyModuleFieldIds.State.Session]: PeabodySessionState.Inactive
         });
 
         return {
@@ -252,10 +261,10 @@ export class CameraService extends EventEmitter {
                     frameRate: this.sessionToken ? frameRates[this.currentCameraSettings.fpsVal] : '',
                     frameRates,
                     modelFile: this.modelFile,
-                    videoPreview: this.currentCameraSettings.videoPreview,
+                    hdmiOutput: this.iotCentral.iotcPeabodySettings.hdmiOutput,
                     vamProcessing: this.currentCameraSettings.vamProcessing,
-                    wowzaPlayerLicense: this.iotCentral.iotcCameraProperties.wowzaPlayerLicense || '',
-                    wowzaPlayerVideoSourceUrl: this.iotCentral.iotcCameraProperties.wowzaPlayerVideoSourceUrl || ''
+                    wowzaPlayerLicense: this.iotCentral.iotcPeabodySettings.wowzaPlayerLicense || '',
+                    wowzaPlayerVideoSourceUrl: this.iotCentral.iotcPeabodySettings.wowzaPlayerVideoSourceUrl || ''
                 },
                 iotcConfig: {
                     systemName: this.state.system.systemName,
@@ -386,27 +395,10 @@ export class CameraService extends EventEmitter {
         }
 
         await this.iotCentral.sendMeasurement({
-            [PeabodyDeviceFieldIds.Telemetry.CameraSystemHeartbeat]: inferenceProcessorHealth[0] + inferenceProcessorHealth[1] + iotCentralHealth + deviceServiceHealth
+            [PeabodyModuleFieldIds.Telemetry.CameraSystemHeartbeat]: inferenceProcessorHealth[0] + inferenceProcessorHealth[1] + iotCentralHealth + deviceServiceHealth
         });
 
         return HealthState.Good;
-    }
-
-    @bind
-    private async switchHdmiOutput(value: boolean): Promise<boolean> {
-        this.logger.log(['CameraService', 'info'], `Attempting to set Hdmi value to ${value}`);
-
-        if (this.currentCameraSettings.videoPreview !== value) {
-            this.currentCameraSettings.videoPreview = value;
-
-            const settingsResult = await this.setCameraSettings(this.currentCameraSettings);
-
-            this.logger.log(['CameraService', 'info'], `Setting Hdmi returned status: ${settingsResult.status}`);
-
-            return settingsResult.status;
-        }
-
-        return true;
     }
 
     @bind
@@ -430,13 +422,13 @@ export class CameraService extends EventEmitter {
                     if (dlcFile) {
                         this.modelFile = dlcFile;
 
-                        await this.iotCentral.updateDeviceProperties({ [PeabodyDeviceFieldIds.Property.VideoModelName]: this.modelFile });
+                        await this.iotCentral.updateDeviceProperties({ [PeabodyModuleFieldIds.Property.VideoModelName]: this.modelFile });
                     }
                 }
 
                 if (status === true) {
                     this.subscription.publishModel(this.modelFile);
-                    await this.iotCentral.sendMeasurement({ [PeabodyDeviceFieldIds.Event.VideoModelChange]: this.modelFile });
+                    await this.iotCentral.sendMeasurement({ [PeabodyModuleFieldIds.Event.VideoModelChange]: this.modelFile });
                 }
             }
 
@@ -454,7 +446,7 @@ export class CameraService extends EventEmitter {
         return status;
     }
 
-    private async initializeCamera(cameraSettings: any): Promise<boolean> {
+    private async initializeCamera(cameraSettings: ICameraSettings): Promise<boolean> {
         this.logger.log(['CameraService', 'info'], `Starting camera initial configuration`);
 
         try {
@@ -462,7 +454,7 @@ export class CameraService extends EventEmitter {
 
             result = await this.configureVideoPreview(cameraSettings);
 
-            if (result === true && cameraSettings.videoPreview) {
+            if (result === true && this.iotCentral.iotcPeabodySettings.hdmiOutput === true) {
                 result = await this.configureVAMProcessing(cameraSettings);
 
                 if (result === true) {
@@ -503,7 +495,7 @@ export class CameraService extends EventEmitter {
         return true;
     }
 
-    private async configureVideoPreview(cameraSettings: any): Promise<boolean> {
+    private async configureVideoPreview(cameraSettings: ICameraSettings): Promise<boolean> {
         try {
             this.logger.log(['CameraService', 'info'], `Setting video configuration: ${JSON.stringify(cameraSettings)}`);
 
@@ -511,8 +503,8 @@ export class CameraService extends EventEmitter {
                 resolutionSelectVal: (cameraSettings.resolutionVal < resolutions.length) ? cameraSettings.resolutionVal : defaultresolutionSelectVal,
                 encodeModeSelectVal: (cameraSettings.encodeModeVal < encoders.length) ? cameraSettings.encodeModeVal : defaultencodeModeSelectVal,
                 bitRateSelectVal: (cameraSettings.bitRateVal < bitRates.length) ? cameraSettings.bitRateVal : defaultbitRateSelectVal,
-                fpsSelectVal: (cameraSettings.fpsSelectVal < frameRates.length) ? cameraSettings.fpsVal : defaultfpsSelectVal,
-                displayOut: cameraSettings.videoPreview ? 1 : 0
+                fpsSelectVal: (cameraSettings.fpsVal < frameRates.length) ? cameraSettings.fpsVal : defaultfpsSelectVal,
+                displayOut: this.iotCentral.iotcPeabodySettings.hdmiOutput === true ? 1 : 0
             };
 
             let result = await this.ipcPostRequest('/video', payload);
@@ -520,7 +512,7 @@ export class CameraService extends EventEmitter {
             if (result === true) {
                 this.logger.log(['CameraService', 'info'], `Setting video preview`);
 
-                result = await this.ipcPostRequest('/preview', { switchStatus: cameraSettings.videoPreview });
+                result = await this.ipcPostRequest('/preview', { switchStatus: this.iotCentral.iotcPeabodySettings.hdmiOutput });
             }
 
             if (result === true) {
@@ -529,18 +521,18 @@ export class CameraService extends EventEmitter {
 
             if (result === true) {
                 const activeDeviceProperties = {
-                    [PeabodyDeviceFieldIds.Property.IpAddress]: this.ipAddresses.cameraIpAddress,
-                    [PeabodyDeviceFieldIds.Property.RtspVideoUrl]: this.sessionToken ? this.rtspVideoUrl : '',
-                    [PeabodyDeviceFieldIds.Property.Resolution]: this.sessionToken ? resolutions[this.currentCameraSettings.resolutionVal] : '',
-                    [PeabodyDeviceFieldIds.Property.Encoder]: this.sessionToken ? encoders[this.currentCameraSettings.encodeModeVal] : '',
-                    [PeabodyDeviceFieldIds.Property.Bitrate]: this.sessionToken ? bitRates[this.currentCameraSettings.bitRateVal] : '',
-                    [PeabodyDeviceFieldIds.Property.Fps]: this.sessionToken ? frameRates[this.currentCameraSettings.fpsVal] : ''
+                    [PeabodyModuleFieldIds.Property.IpAddress]: this.ipAddresses.cameraIpAddress,
+                    [PeabodyModuleFieldIds.Property.RtspVideoUrl]: this.sessionToken ? this.rtspVideoUrl : '',
+                    [PeabodyModuleFieldIds.Property.Resolution]: this.sessionToken ? resolutions[this.currentCameraSettings.resolutionVal] : '',
+                    [PeabodyModuleFieldIds.Property.Encoder]: this.sessionToken ? encoders[this.currentCameraSettings.encodeModeVal] : '',
+                    [PeabodyModuleFieldIds.Property.Bitrate]: this.sessionToken ? bitRates[this.currentCameraSettings.bitRateVal] : '',
+                    [PeabodyModuleFieldIds.Property.Fps]: this.sessionToken ? frameRates[this.currentCameraSettings.fpsVal] : ''
                 };
 
                 await this.iotCentral.updateDeviceProperties(activeDeviceProperties);
 
                 await this.iotCentral.sendMeasurement({
-                    [PeabodyDeviceFieldIds.Setting.HdmiOutput]: this.currentCameraSettings.videoPreview ? 1 : 0
+                    [PeabodyModuleFieldIds.Setting.HdmiOutput]: this.iotCentral.iotcPeabodySettings.hdmiOutput ? 1 : 0
                 });
             }
 
@@ -585,14 +577,14 @@ export class CameraService extends EventEmitter {
 
                 if (result === true) {
                     await this.iotCentral.updateDeviceProperties({
-                        [PeabodyDeviceFieldIds.Property.VideoModelName]: this.modelFile
+                        [PeabodyModuleFieldIds.Property.VideoModelName]: this.modelFile
                     });
 
                     await this.iotCentral.sendMeasurement({
-                        [PeabodyDeviceFieldIds.State.InferenceProcessor]: this.currentCameraSettings.vamProcessing
-                            ? PeabodyDeviceInferenceProcessorState.Active
-                            : PeabodyDeviceInferenceProcessorState.Inactive,
-                        [PeabodyDeviceFieldIds.State.Session]: this.sessionToken ? PeabodyDeviceSessionState.Active : PeabodyDeviceSessionState.Inactive
+                        [PeabodyModuleFieldIds.State.InferenceProcessor]: this.currentCameraSettings.vamProcessing
+                            ? PeabodyInferenceProcessorState.Active
+                            : PeabodyInferenceProcessorState.Inactive,
+                        [PeabodyModuleFieldIds.State.Session]: this.sessionToken ? PeabodySessionState.Active : PeabodySessionState.Inactive
                     });
                 }
             }

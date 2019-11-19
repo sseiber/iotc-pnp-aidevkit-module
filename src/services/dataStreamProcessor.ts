@@ -3,7 +3,7 @@ import { Server } from '@hapi/hapi';
 import { spawn } from 'child_process';
 import { LoggingService } from './logging';
 import { Transform } from 'stream';
-import { IoTCentralService, PeabodyDeviceFieldIds } from '../services/iotcentral';
+import { IoTCentralService, PeabodyModuleFieldIds } from '../services/iotcentral';
 import { forget } from '../utils';
 import * as _get from 'lodash.get';
 import { HealthState } from './health';
@@ -38,7 +38,7 @@ export class DataStreamController {
             this.gstProcess.on('error', (error) => {
                 this.logger.log(['dataController', 'error'], `Error on gstProcess: ${_get(error, 'message')}`);
 
-                forget(this.iotCentral.sendMeasurement, { [PeabodyDeviceFieldIds.Event.DataStreamProcessingError]: _get(error, 'message') });
+                forget(this.iotCentral.sendMeasurement, { [PeabodyModuleFieldIds.Event.DataStreamProcessingError]: _get(error, 'message') });
 
                 this.healthState = HealthState.Critical;
             });
@@ -46,7 +46,7 @@ export class DataStreamController {
             this.gstProcess.on('exit', (code, signal) => {
                 this.logger.log(['dataController', 'info'], `Exit on gstProcess, code: ${code}, signal: ${signal}`);
 
-                forget(this.iotCentral.sendMeasurement, { [PeabodyDeviceFieldIds.Event.DataStreamProcessingStopped]: '1' });
+                forget(this.iotCentral.sendMeasurement, { [PeabodyModuleFieldIds.Event.DataStreamProcessingStopped]: '1' });
 
                 if (this.gstProcess !== null) {
                     // abnormal exit
@@ -64,7 +64,7 @@ export class DataStreamController {
 
             this.gstProcess.stdout.pipe(frameProcessor);
 
-            forget(this.iotCentral.sendMeasurement, { [PeabodyDeviceFieldIds.Event.DataStreamProcessingStarted]: '1' });
+            forget(this.iotCentral.sendMeasurement, { [PeabodyModuleFieldIds.Event.DataStreamProcessingStarted]: '1' });
 
             return true;
         }

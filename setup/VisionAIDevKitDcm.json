@@ -1,0 +1,570 @@
+{
+    "@id": "urn:AzureIoT:AI:MicrosoftVisionAIDevKitDCM:1",
+    "@type": "CapabilityModel",
+    "implements": [],
+    "displayName": {
+        "en": "Microsoft Vision AI Dev Kit DCM"
+    },
+    "contents": [
+        {
+            "@id": "urn:AzureIoT:AI:MicrosoftVisionAIDevKitDCM:VisionAIDevKitModule:1",
+            "@type": [
+                "Relationship",
+                "SemanticType/EdgeModule"
+            ],
+            "displayName": {
+                "en": "Vision AIDevKit"
+            },
+            "name": "VisionAIDevKitModule",
+            "maxMultiplicity": 1,
+            "target": [
+                {
+                    "@id": "urn:AzureIoT:AI:VisionAIDevKitModule:1",
+                    "@type": "CapabilityModel",
+                    "implements": [
+                        {
+                            "@type": "InterfaceInstance",
+                            "displayName": {
+                                "en": "Settings"
+                            },
+                            "name": "Settings",
+                            "schema": {
+                                "@id": "urn:AzureIoT:AI:VisionAIDevKitModule:ISettings:1",
+                                "@type": "Interface",
+                                "displayName": {
+                                    "en": "Settings"
+                                },
+                                "contents": [
+                                    {
+                                        "@type": "Property",
+                                        "displayName": {
+                                            "en": "HDMI Output"
+                                        },
+                                        "name": "wpHdmiOutput",
+                                        "writable": true,
+                                        "schema": "boolean"
+                                    },
+                                    {
+                                        "@type": "Property",
+                                        "displayName": {
+                                            "en": "Inference Threshold"
+                                        },
+                                        "name": "wpInferenceThreshold",
+                                        "writable": true,
+                                        "schema": "double"
+                                    },
+                                    {
+                                        "@type": "Property",
+                                        "displayName": {
+                                            "en": "Detect Class"
+                                        },
+                                        "name": "wpDetectClass",
+                                        "writable": true,
+                                        "schema": "string"
+                                    },
+                                    {
+                                        "@type": "Property",
+                                        "displayName": {
+                                            "en": "Wowza Player License"
+                                        },
+                                        "name": "wpWowzaPlayerLicense",
+                                        "writable": true,
+                                        "schema": "string"
+                                    },
+                                    {
+                                        "@type": "Property",
+                                        "displayName": {
+                                            "en": "Wowza Player Video Source Url"
+                                        },
+                                        "name": "wpWowzaPlayerVideoSourceUrl",
+                                        "writable": true,
+                                        "schema": "string"
+                                    }
+                                ]
+                            }
+                        },
+                        {
+                            "@type": "InterfaceInstance",
+                            "name": "DeviceInformation",
+                            "displayName": {
+                                "en": "Device information"
+                            },
+                            "schema": {
+                                "@id": "urn:azureiot:DeviceManagement:DeviceInformation:1",
+                                "@type": "Interface",
+                                "displayName": {
+                                    "en": "Device information"
+                                },
+                                "contents": [
+                                    {
+                                        "@type": "Property",
+                                        "comment": "Company name of the device manufacturer. This could be the same as the name of the original equipment manufacturer (OEM). Ex. Contoso.",
+                                        "displayName": {
+                                            "en": "Manufacturer"
+                                        },
+                                        "name": "manufacturer",
+                                        "schema": "string"
+                                    },
+                                    {
+                                        "@type": "Property",
+                                        "comment": "Device model name or ID. Ex. Surface Book 2.",
+                                        "displayName": {
+                                            "en": "Device model"
+                                        },
+                                        "name": "model",
+                                        "schema": "string"
+                                    },
+                                    {
+                                        "@type": "Property",
+                                        "comment": "Version of the software on your device. This could be the version of your firmware. Ex. 1.3.45",
+                                        "displayName": {
+                                            "en": "Software version"
+                                        },
+                                        "name": "swVersion",
+                                        "schema": "string"
+                                    },
+                                    {
+                                        "@type": "Property",
+                                        "comment": "Name of the operating system on the device. Ex. Windows 10 IoT Core.",
+                                        "displayName": {
+                                            "en": "Operating system name"
+                                        },
+                                        "name": "osName",
+                                        "schema": "string"
+                                    },
+                                    {
+                                        "@type": "Property",
+                                        "comment": "Architecture of the processor on the device. Ex. x64 or ARM.",
+                                        "displayName": {
+                                            "en": "Processor architecture"
+                                        },
+                                        "name": "processorArchitecture",
+                                        "schema": "string"
+                                    },
+                                    {
+                                        "@type": "Property",
+                                        "comment": "Name of the manufacturer of the processor on the device. Ex. Intel.",
+                                        "displayName": {
+                                            "en": "Processor manufacturer"
+                                        },
+                                        "name": "processorManufacturer",
+                                        "schema": "string"
+                                    },
+                                    {
+                                        "@type": "Property",
+                                        "comment": "Total available storage on the device in kilobytes. Ex. 2048000 kilobytes.",
+                                        "displayName": {
+                                            "en": "Total storage"
+                                        },
+                                        "name": "totalStorage",
+                                        "displayUnit": {
+                                            "en": "kilobytes"
+                                        },
+                                        "schema": "long"
+                                    },
+                                    {
+                                        "@type": "Property",
+                                        "comment": "Total available memory on the device in kilobytes. Ex. 256000 kilobytes.",
+                                        "displayName": {
+                                            "en": "Total memory"
+                                        },
+                                        "name": "totalMemory",
+                                        "displayUnit": {
+                                            "en": "kilobytes"
+                                        },
+                                        "schema": "long"
+                                    }
+                                ]
+                            }
+                        },
+                        {
+                            "@type": "InterfaceInstance",
+                            "name": "ModuleInformation",
+                            "displayName": {
+                                "en": "Module Information"
+                            },
+                            "schema": {
+                                "@id": "urn:AzureIoT:AI:VisionAIDevKitModule:IModuleInformation:1",
+                                "@type": "Interface",
+                                "displayName": {
+                                    "en": "Module Information"
+                                },
+                                "contents": [
+                                    {
+                                        "@type": "Telemetry",
+                                        "displayName": {
+                                            "en": "Camera System Heartbeat"
+                                        },
+                                        "name": "tlCameraSystemHeartbeat",
+                                        "schema": "integer"
+                                    },
+                                    {
+                                        "@type": "Telemetry",
+                                        "displayName": {
+                                            "en": "Detection Count"
+                                        },
+                                        "name": "tlDetectionCount",
+                                        "schema": "integer"
+                                    },
+                                    {
+                                        "@type": "Telemetry",
+                                        "displayName": {
+                                            "en": "All Detections Count"
+                                        },
+                                        "name": "tlAllDetectionsCount",
+                                        "schema": "integer"
+                                    },
+                                    {
+                                        "@type": "Telemetry",
+                                        "displayName": {
+                                            "en": "Battery Level"
+                                        },
+                                        "name": "tlBatteryLevel",
+                                        "schema": "double"
+                                    },
+                                    {
+                                        "@type": [
+                                            "Telemetry",
+                                            "SemanticType/State"
+                                        ],
+                                        "displayName": {
+                                            "en": "Inference Processor"
+                                        },
+                                        "name": "stInferenceProcessor",
+                                        "schema": {
+                                            "@type": "Enum",
+                                            "valueSchema": "string",
+                                            "enumValues": [
+                                                {
+                                                    "@type": "EnumValue",
+                                                    "displayName": {
+                                                        "en": "inactive"
+                                                    },
+                                                    "enumValue": "inactive",
+                                                    "name": "inactive"
+                                                },
+                                                {
+                                                    "@type": "EnumValue",
+                                                    "displayName": {
+                                                        "en": "active"
+                                                    },
+                                                    "enumValue": "active",
+                                                    "name": "active"
+                                                }
+                                            ]
+                                        }
+                                    },
+                                    {
+                                        "@type": [
+                                            "Telemetry",
+                                            "SemanticType/State"
+                                        ],
+                                        "displayName": {
+                                            "en": "Session"
+                                        },
+                                        "name": "stSession",
+                                        "schema": {
+                                            "@type": "Enum",
+                                            "valueSchema": "string",
+                                            "enumValues": [
+                                                {
+                                                    "@type": "EnumValue",
+                                                    "displayName": {
+                                                        "en": "inactive"
+                                                    },
+                                                    "enumValue": "inactive",
+                                                    "name": "inactive"
+                                                },
+                                                {
+                                                    "@type": "EnumValue",
+                                                    "displayName": {
+                                                        "en": "active"
+                                                    },
+                                                    "enumValue": "active",
+                                                    "name": "active"
+                                                }
+                                            ]
+                                        }
+                                    },
+                                    {
+                                        "@type": [
+                                            "Telemetry",
+                                            "SemanticType/Event"
+                                        ],
+                                        "displayName": {
+                                            "en": "Session Login"
+                                        },
+                                        "name": "evSessionLogin",
+                                        "schema": "string"
+                                    },
+                                    {
+                                        "@type": [
+                                            "Telemetry",
+                                            "SemanticType/Event"
+                                        ],
+                                        "displayName": {
+                                            "en": "Session Logout"
+                                        },
+                                        "name": "evSessionLogout",
+                                        "schema": "string"
+                                    },
+                                    {
+                                        "@type": [
+                                            "Telemetry",
+                                            "SemanticType/Event"
+                                        ],
+                                        "displayName": {
+                                            "en": "Video Model Change"
+                                        },
+                                        "name": "evVideoModelChange",
+                                        "schema": "string"
+                                    },
+                                    {
+                                        "@type": [
+                                            "Telemetry",
+                                            "SemanticType/Event"
+                                        ],
+                                        "displayName": {
+                                            "en": "Device Restart"
+                                        },
+                                        "name": "evDeviceRestart",
+                                        "schema": "string"
+                                    },
+                                    {
+                                        "@type": [
+                                            "Telemetry",
+                                            "SemanticType/Event"
+                                        ],
+                                        "displayName": {
+                                            "en": "Qualcomm Service Restart"
+                                        },
+                                        "name": "evQmmfRestart",
+                                        "schema": "string"
+                                    },
+                                    {
+                                        "@type": [
+                                            "Telemetry",
+                                            "SemanticType/Event"
+                                        ],
+                                        "displayName": {
+                                            "en": "Image Provision Complete"
+                                        },
+                                        "name": "evImageProvisionComplete",
+                                        "schema": "string"
+                                    },
+                                    {
+                                        "@type": [
+                                            "Telemetry",
+                                            "SemanticType/Event"
+                                        ],
+                                        "displayName": {
+                                            "en": "Inference"
+                                        },
+                                        "name": "evInference",
+                                        "schema": "string"
+                                    },
+                                    {
+                                        "@type": "Property",
+                                        "displayName": {
+                                            "en": "IP Address"
+                                        },
+                                        "name": "rpIpAddress",
+                                        "schema": "string"
+                                    },
+                                    {
+                                        "@type": "Property",
+                                        "displayName": {
+                                            "en": "RTSP Video Url"
+                                        },
+                                        "name": "rpRtspVideoUrl",
+                                        "schema": "string"
+                                    },
+                                    {
+                                        "@type": "Property",
+                                        "displayName": {
+                                            "en": "Bitrate"
+                                        },
+                                        "name": "rpBitrate",
+                                        "schema": "string"
+                                    },
+                                    {
+                                        "@type": "Property",
+                                        "displayName": {
+                                            "en": "Encoder"
+                                        },
+                                        "name": "rpEncoder",
+                                        "schema": "string"
+                                    },
+                                    {
+                                        "@type": "Property",
+                                        "displayName": {
+                                            "en": "FPS"
+                                        },
+                                        "name": "rpFps",
+                                        "schema": "string"
+                                    },
+                                    {
+                                        "@type": "Property",
+                                        "displayName": {
+                                            "en": "Resolution"
+                                        },
+                                        "name": "rpResolution",
+                                        "schema": "string"
+                                    },
+                                    {
+                                        "@type": "Property",
+                                        "displayName": {
+                                            "en": "Image Version"
+                                        },
+                                        "name": "rpImageVersion",
+                                        "schema": "string"
+                                    },
+                                    {
+                                        "@type": "Property",
+                                        "displayName": {
+                                            "en": "Image Provision Status"
+                                        },
+                                        "name": "rpImageProvisionStatus",
+                                        "schema": "string"
+                                    },
+                                    {
+                                        "@type": "Property",
+                                        "displayName": {
+                                            "en": "Video Model Name"
+                                        },
+                                        "name": "rpVideoModelName",
+                                        "schema": "string"
+                                    },
+                                    {
+                                        "@type": "Property",
+                                        "displayName": {
+                                            "en": "Firmware Version"
+                                        },
+                                        "name": "rpFirmwareVersion",
+                                        "schema": "string"
+                                    },
+                                    {
+                                        "@type": "Property",
+                                        "displayName": {
+                                            "en": "Battery Level"
+                                        },
+                                        "name": "rpBatteryLevel",
+                                        "schema": "double"
+                                    },
+                                    {
+                                        "@type": "Property",
+                                        "displayName": {
+                                            "en": "Free Memory"
+                                        },
+                                        "name": "rpFreeMemory",
+                                        "schema": "long"
+                                    },
+                                    {
+                                        "@type": "Command",
+                                        "commandType": "asynchronous",
+                                        "request": {
+                                            "@type": "SchemaField",
+                                            "displayName": {
+                                                "en": "Vision Model Url"
+                                            },
+                                            "name": "cmParamVisionModelUrl",
+                                            "schema": "string"
+                                        },
+                                        "displayName": {
+                                            "en": "Switch Vision AI Model"
+                                        },
+                                        "name": "cmSwitchVisionAiModel"
+                                    },
+                                    {
+                                        "@type": "Command",
+                                        "commandType": "asynchronous",
+                                        "displayName": {
+                                            "en": "Restart Device"
+                                        },
+                                        "name": "cmRestartDevice"
+                                    },
+                                    {
+                                        "@type": [
+                                            "Telemetry",
+                                            "SemanticType/Event"
+                                        ],
+                                        "displayName": {
+                                            "en": "Data Stream Processing Started"
+                                        },
+                                        "name": "evDataStreamProcessingStarted",
+                                        "schema": "string"
+                                    },
+                                    {
+                                        "@type": [
+                                            "Telemetry",
+                                            "SemanticType/Event"
+                                        ],
+                                        "displayName": {
+                                            "en": "Data Stream Processing Stopped"
+                                        },
+                                        "name": "evDataStreamProcessingStopped",
+                                        "schema": "string"
+                                    },
+                                    {
+                                        "@type": [
+                                            "Telemetry",
+                                            "SemanticType/Event"
+                                        ],
+                                        "displayName": {
+                                            "en": "Data Stream Processing Error"
+                                        },
+                                        "name": "evDataStreamProcessingError",
+                                        "schema": "string"
+                                    },
+                                    {
+                                        "@type": [
+                                            "Telemetry",
+                                            "SemanticType/Event"
+                                        ],
+                                        "displayName": {
+                                            "en": "Video Stream Processing Started"
+                                        },
+                                        "name": "evVideoStreamProcessingStarted",
+                                        "schema": "string"
+                                    },
+                                    {
+                                        "@type": [
+                                            "Telemetry",
+                                            "SemanticType/Event"
+                                        ],
+                                        "displayName": {
+                                            "en": "Video Stream Processing Stopped"
+                                        },
+                                        "name": "evVideoStreamProcessingStopped",
+                                        "schema": "string"
+                                    },
+                                    {
+                                        "@type": [
+                                            "Telemetry",
+                                            "SemanticType/Event"
+                                        ],
+                                        "displayName": {
+                                            "en": "Video Stream Processing Error"
+                                        },
+                                        "name": "evVideoStreamProcessingError",
+                                        "schema": "string"
+                                    }
+                                ]
+                            }
+                        }
+                    ],
+                    "displayName": {
+                        "en": "VisionAIDevKit Module"
+                    },
+                    "contents": [],
+                    "@context": [
+                        "http://azureiot.com/v1/contexts/IoTModel.json"
+                    ]
+                }
+            ]
+        }
+    ],
+    "@context": [
+        "http://azureiot.com/v1/contexts/IoTModel.json"
+    ]
+}

@@ -22,24 +22,21 @@ ADD tslint.json ${WORKINGDIR}/tslint.json
 ADD tsconfig.json ${WORKINGDIR}/tsconfig.json
 ADD src ${WORKINGDIR}/src
 ADD client_dist ${WORKINGDIR}/client_dist
-ADD hapiTypes.d.ts ${WORKINGDIR}/hapiTypes.d.ts
 
 RUN npm install -q && \
-    cp ./hapiTypes.d.ts ./node_modules/@types/hapi__hapi/index.d.ts && \
     ./node_modules/.bin/tsc -p . && \
     ./node_modules/.bin/tslint -p . && \
     npm prune --production && \
     rm -f tslint.json && \
     rm -f tsconfig.json && \
-    rm -f hapiTypes.d.ts && \
     rm -rf src
 
-HEALTHCHECK \
-    --interval=30s \
-    --timeout=30s \
-    --start-period=60s \
-    --retries=3 \
-    CMD curl -f http://localhost:9010/health || exit 1
+# HEALTHCHECK \
+#     --interval=30s \
+#     --timeout=30s \
+#     --start-period=60s \
+#     --retries=3 \
+#     CMD curl -f http://localhost:9010/health || exit 1
 
 EXPOSE 9010
 

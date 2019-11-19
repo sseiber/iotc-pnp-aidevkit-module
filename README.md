@@ -29,7 +29,7 @@ The project includes a Dockerfile and scripts used to build the docker container
     ```
     code .
     ```
-* In order for the camera to run a video models we need to copy a video model to it. The Vision AI Dev device should already have been provisioned with a video model if you followed the setup instructions. But just to be sure you can check on the camera device that the `/data/misc/camera` folder contains a vision model. Use the following command in a terminal window:
+* In order for the camera to run a video models we need to copy a video model to it. The Vision AI Dev device should already have been provisioned with a video model if you followed the setup instructions that came with the camera. But just to be sure you can check on the camera device that the `/data/misc/camera` folder contains a vision model. Use the following command in a terminal window:
     ```
     adb shell ls /data/misc/camera
     ```
@@ -47,7 +47,7 @@ The project includes a Dockerfile and scripts used to build the docker container
     Open or create the `./configs/imageName.json` and update the imageName field to your own container registry and image name. For example:
     ```
     {
-        "imageName": "<your-container-registry>/<your-docker-imagename>"
+        "imageName": "myregistry.azurecr.io/aidevkit-module"
     }
     ```
     To build the Docker image (using your image name configured the imageName.json config file) run the command:
@@ -55,47 +55,42 @@ The project includes a Dockerfile and scripts used to build the docker container
     npm version patch
     ```
     Note: if you have files checked out in your project you will need to add `--force` to the end of the command e.g.: `npm version patch --force`
-  * This will build the image defined in the `./configs/imageName.json` file and bump the version number in the package.json file. * When the build completes it should have built the docker container and pushed it to your container registry.
+
+  * This will build the image defined in the `./configs/imageName.json` file and bump the version number in the package.json file. When the build completes it should have built the docker container and pushed it to your container registry.
+
 ## Create a new IoT Central app with a module template
-This section describes how to create a new IoT Central pnp app and create the module template (dcm) for the Microsoft Vision AI Dev Kit.
+This section describes how to create a new IoT Central app and provision the device capability model (DCM) for the Microsoft Vision AI Dev Kit.
+
 ### Create the IoT Central app
 * Create a new IoT Central App (https://apps.azureiotcentral.com)
 * Pay-as-you-go or Trial
+
 ### Import the device template from this project
-* Add a new template
-* Edge template (may need to add `?flights=iotEdge` to the url)
-* Select IoT Edge
-* Skip adding the deployment manifest
+* Add a new template (Device Templates view)
+* Selet Azure IoT Edge, then Next: Customize
+* Select Skip: Create, then Create
+* Change the default name at the top (Azure IoT Edge Device Template xxxx)
 * Select to Import a Capability Model
-  *  Use the capability model in this project's `./dcm` folder
+  *  Use the capability model in this project's `./setup` folder (VisionAIDevKitDcm.json)
+* At this point you should see the module "VisionAIDevKit Module" along with interfaces "Settings", "Module information", and "Device information".
+
 ### Add the module deployment manifest
-* Replace manifest with the one in this project  
+* Select Replace Manifest (from the top bar) with your own based on the one in this project's `./setup` folder.
   * Note: you need to update manifest the image name and tag for your container and the Container Registry name and credentials.
+
+### Publish the template
+* From the top bar select Publish
+* Now your device template (DCM) is ready for devices to associate with it and send telemetry and properties, as well as respond to settings changes and respond to commands.
 
 ## Configure the IoT Edge runtime on the camera device
 This section will describe how to configure the IoT Edge runtime for use with IoT Central.
   * You will need to update the Azure IoT Edge runtime provisioning method in the `/etc/iotedge/config.yaml` file to connect to your Azure IoT Central app. This will use the DPS symmetric key provisioning method in the `config.yaml` file.
-  * Create a sysmmetric key to use for your device provisioning
-    * In your Azure IoT App go to the Administration section (left pane) and select Device Connection.
-    * First, copy the `ID Scope` at the top of the screen - you'll use this later.
-    * Under "Authentication Methods" you should see two tabs/titles "Devices" and "Azure Edge Devices". Select "Azure Edge Devices"  
-      NOTE: You may need to add the `?flights=iotEdge` to the end of the url in your browser.
-    * Click on the "View Keys" link just below
-    * This will show you the Primary and Secondary keys for the Shared Access Signature (master key) for the Azure Edge Devices enrollment group. Copy the Primary or Secondary key.
-    * Using the [dps-keygen tool](https://github.com/Azure/dps-keygen) use the following command to create a symmetric key for device provisioning
-      ```
-      dps-keygen -mk:<say key from IoT Central app> -di:<unique device name>
+  * Create a symmetric key to use for your device provisioning
+    * In your Azure IoT app select the Devices view and then select the template you just created
+    * Select the "+ New" option and give your new device a `Device ID` and `Device Name` (these can be the same and human readable), then click on the Create button.
+    * When you see the new device in the list, click on it, then select the Connect option on the top bar.
+    * In the Device Connection window, copy the `ID Scope`, `Device ID`, and `Primary Key`, you will copy these to the device.
 
-      Example:
-      dps-keygen -mk fgQBCaxXSY2omT9NkYTALgOCebpD1/RRkCycDqGruBlxeiA7IBLtJe2uvrEJT7y8HhjWVlPcy8A0zPe7Nlfh7vW== -di:test-device
-      ```
-    * The result of the command will be a symmetric key like this:
-      ```
-      Azure IoT DPS Symetric Key Generator v0.3.1
-
-      please find the device key below.
-      GbTbdKj/b8p32WK2W8tFbn8WcQpxrBKScfkhpmzuD7I=
-      ```
   * Upate the Azure IoT Edge runtime `config.yaml` file.
     * From a command line use the `adb` tool mentioned above.
     * Run the command:
@@ -109,10 +104,10 @@ This section will describe how to configure the IoT Edge runtime for use with Io
       ```
     * You will need to make the file editable before you edit. The Yocto Linux installation on this device only includes the `vi` editor. Start the `vi` editor on the `config.yaml` file.
       ```
-      sudo chmod +r config.yaml
+      chmod +w config.yaml
       vi config.yaml
       ```
-    * Comment out the "Manual provisioning configuration" section so it looks like this
+    * Comment out the "Manual provisioning configuration" section so it looks like this:
       ```
       # Manual provisioning configuration
       #provisioning:
@@ -125,25 +120,30 @@ This section will describe how to configure the IoT Edge runtime for use with Io
       provisioning:
         source: "dps"
         global_endpoint: "https://global.azure-devices-provisioning.net"
-        scope_id: "<YOUR APP'S SCOPE ID FROM ABOVE>"
+        scope_id: "<ID Scope>"
         attestation:
           method: "symmetric_key"
-          registration_id: "<YOUR UNIQUE DEVICE ID>"
-          symmetric_key: "<THE DEVICE SYMMETRIC KEY YOU CREATED ABOVE>"
+          registration_id: "<Device ID>"
+          symmetric_key: "<Primary Key>"
       ```
     * Save and exit your editor
-    * Now Restart the Azure IoT Edge runtime with the following command:
-      ```
-      sudo systemctl restart iotedge
-      ```
-    * After a few moments the Edge runtime should restart and use the new DPS provisioning method you configured. When that happens successfully you will see a new device in your Azure IoT app under the Devices section.
 
-## Connect your new IoT Edge device to the Microsoft Vision AI Dev Kit template
-This section now to connect the Azure IoT Edge device you created above to the Microsoft Vision AI Dev Kit template you imported into your Azure IoT App.
-* Go to the Device section in your app (left pane).
-* You should see your new `test-device` running and with a device status as `Unassociated`
-* Select the device using the radio button on the left side, then select the "Migrate" option.
-* You should see a list of possible template to choose from. Select the template you imported above when you created the IoT Central app.
-* The device will be migrated to the selected template.
-* When you select the device you will now be taken to the views using that template
-* At this point you should be able to use the various tabs in the view (e.g. "About", "Overview", "Modules", "Manage", etc.) to see real time telemetry and device information.
+  * Provision the `state.json` file on your device
+    * This module uses a file in the devices native file system to provision manufacturer device properties. The file is read from the `/data/misc/storage` directory in the device's file system.
+    * Provision the storage directory on the device:
+      ```
+      mkdir -p /data/misc/storage
+      chmod -R 777 /data
+      ```
+    * Copy the state.json file from the project's `./setup` folder to the device. Use a shell window on your PC, not the ADB shell:
+      ```
+      adb push ./setup/state.json /data/misc/storage
+      ```
+
+  * Now Restart the Azure IoT Edge runtime with the following command:
+    ```
+    systemctl restart iotedge
+    ```
+  * After a few moments the Edge runtime should restart and use the new DPS provisioning method you configured. When that happens successfully you will see a new device in your Azure IoT app under the Devices section.
+  * Follow the instructions in the [Azure IoT Central Documentation](https://docs.microsoft.com/en-us/azure/iot-central/) to add a dashboard view to your template to visualize the telemetry.
+  
