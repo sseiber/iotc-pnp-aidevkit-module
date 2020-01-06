@@ -105,7 +105,7 @@ export class InferenceProcessorService {
         ];
     }
 
-    private async publishInference(inference): Promise<void> {
+    private async publishInference(inference) {
         const trackTimeout = Date.now();
         this.lastImageData = null;
         while ((Date.now() - trackTimeout) < (1000 * 5) && this.lastImageData === null) {
@@ -117,24 +117,31 @@ export class InferenceProcessorService {
             imageData: this.lastImageData || Buffer.from('')
         });
 
-        let detectClassCount = 0;
+        const detectedClasses = {};
         for (const inferenceItem of inference.inferences) {
             const className = (_get(inferenceItem, 'display_name') || 'Unknown');
 
-            if (className.toUpperCase() === this.iotCentral.iotcPeabodySettings.detectClass) {
-                detectClassCount++;
+            detectedClasses[className] = (_get(detectedClasses, className) || 0) + 1;
+        }
+
+        let inferenceData = {};
+        for (const detectedClass in detectedClasses) {
+            if (!detectedClasses.hasOwnProperty(detectedClass)) {
+                continue;
             }
 
-            await this.iotCentral.sendInferenceData({
-                [PeabodyModuleFieldIds.Event.Inference]: className
-            });
-
-            return className;
+            inferenceData = {
+                ...inferenceData,
+                [PeabodyModuleFieldIds.Event.Inference]: detectedClass,
+                ...(detectedClass.toUpperCase() === this.iotCentral.iotcPeabodySettings.detectClass) && {
+                    [PeabodyModuleFieldIds.Telemetry.Detections]: _get(detectedClasses, detectedClass)
+                }
+            };
         }
 
         await this.iotCentral.sendInferenceData({
-            [PeabodyModuleFieldIds.Telemetry.AllDetections]: inference.inferences.length,
-            [PeabodyModuleFieldIds.Telemetry.Detections]: detectClassCount
+            ...inferenceData,
+            [PeabodyModuleFieldIds.Telemetry.AllDetections]: inference.inferences.length
         });
     }
 }
