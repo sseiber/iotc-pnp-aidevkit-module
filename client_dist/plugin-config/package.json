@@ -1,0 +1,70 @@
+{
+  "_args": [
+    [
+      "@hapi/nes@11.2.2",
+      "/Users/scotts/source/repos/iot/peabody/iotc-pnp-aidevkit-client"
+    ]
+  ],
+  "_from": "@hapi/nes@11.2.2",
+  "_id": "@hapi/nes@11.2.2",
+  "_inBundle": false,
+  "_integrity": "sha512-XGFfTQsBB7NnpIgVdnz36lrZjJlUgni0tLmcN4TWiYdCGxNr6+YRreQ6jdsGN3j8qfZ8yLBY0FsGkHBiMPKLAw==",
+  "_location": "/@hapi/nes",
+  "_phantomChildren": {},
+  "_requested": {
+    "type": "version",
+    "registry": true,
+    "raw": "@hapi/nes@11.2.2",
+    "name": "@hapi/nes",
+    "escapedName": "@hapi%2fnes",
+    "scope": "@hapi",
+    "rawSpec": "11.2.2",
+    "saveSpec": null,
+    "fetchSpec": "11.2.2"
+  },
+  "_requiredBy": [
+    "/"
+  ],
+  "_resolved": "https://registry.npmjs.org/@hapi/nes/-/nes-11.2.2.tgz",
+  "_spec": "11.2.2",
+  "_where": "/Users/scotts/source/repos/iot/peabody/iotc-pnp-aidevkit-client",
+  "bugs": {
+    "url": "https://github.com/hapijs/nes/issues"
+  },
+  "dependencies": {
+    "@hapi/boom": "7.x.x",
+    "@hapi/bounce": "1.x.x",
+    "@hapi/call": "5.x.x",
+    "@hapi/cryptiles": "4.x.x",
+    "@hapi/hoek": "8.x.x",
+    "@hapi/iron": "5.x.x",
+    "@hapi/joi": "16.x.x",
+    "@hapi/teamwork": "3.x.x",
+    "ws": "6.x.x"
+  },
+  "description": "WebSocket adapter plugin for hapi routes",
+  "devDependencies": {
+    "@hapi/code": "6.x.x",
+    "@hapi/hapi": "18.x.x",
+    "@hapi/lab": "20.x.x",
+    "mkdirp": "0.5.1"
+  },
+  "homepage": "https://github.com/hapijs/nes#readme",
+  "keywords": [
+    "hapi",
+    "plugin",
+    "websocket"
+  ],
+  "license": "BSD-3-Clause",
+  "main": "lib/index.js",
+  "name": "@hapi/nes",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/hapijs/nes.git"
+  },
+  "scripts": {
+    "test": "lab -a @hapi/code -t 100 -L -m 10000",
+    "test-cov-html": "lab -a @hapi/code -r html -o coverage.html -m 10000"
+  },
+  "version": "11.2.2"
+}
