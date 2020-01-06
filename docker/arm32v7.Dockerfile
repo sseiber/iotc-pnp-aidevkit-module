@@ -31,12 +31,12 @@ RUN npm install -q && \
     rm -f tsconfig.json && \
     rm -rf src
 
-# HEALTHCHECK \
-#     --interval=30s \
-#     --timeout=30s \
-#     --start-period=60s \
-#     --retries=3 \
-#     CMD curl -f http://localhost:9010/health || exit 1
+HEALTHCHECK \
+    --interval=30s \
+    --timeout=30s \
+    --start-period=60s \
+    --retries=3 \
+    CMD curl -f http://localhost:9010/health || exit 1
 
 EXPOSE 9010
 
