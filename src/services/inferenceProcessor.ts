@@ -74,7 +74,7 @@ export class InferenceProcessorService {
 
             const publishedInferences = inferences.reduce((publishedItems, inferenceItem) => {
                 const confidence = Number(_get(inferenceItem, 'confidence') || 0);
-                if (_get(inferenceItem, 'display_name') !== 'Negative' && confidence >= this.iotCentral.iotcPeabodySettings.inferenceThreshold) {
+                if (_get(inferenceItem, 'display_name') !== 'Negative' && confidence >= Number(this.iotCentral.iotcPeabodySettings.inferenceThreshold)) {
                     publishedItems.push({
                         count: this.inferenceCount++,
                         ...inferenceItem
@@ -118,22 +118,23 @@ export class InferenceProcessorService {
         });
 
         let detectClassCount = 0;
-        const classes = inference.inferences.map(inferenceItem => {
-            const className = (_get(inferenceItem, 'display_name') || '');
+        for (const inferenceItem of inference.inferences) {
+            const className = (_get(inferenceItem, 'display_name') || 'Unknown');
 
             if (className.toUpperCase() === this.iotCentral.iotcPeabodySettings.detectClass) {
                 detectClassCount++;
             }
 
-            return className || 'Unknown';
-        });
+            await this.iotCentral.sendInferenceData({
+                [PeabodyModuleFieldIds.Event.Inference]: className
+            });
 
-        await this.iotCentral.sendInferenceData(
-            {
-                [PeabodyModuleFieldIds.Telemetry.AllDetections]: inference.inferences.length,
-                [PeabodyModuleFieldIds.Telemetry.Detections]: detectClassCount,
-                [PeabodyModuleFieldIds.Event.Inference]: classes.join(', ')
-            }
-        );
+            return className;
+        }
+
+        await this.iotCentral.sendInferenceData({
+            [PeabodyModuleFieldIds.Telemetry.AllDetections]: inference.inferences.length,
+            [PeabodyModuleFieldIds.Telemetry.Detections]: detectClassCount
+        });
     }
 }
