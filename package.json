@@ -39,7 +39,7 @@
     "lodash.defaults": "^4.2.0",
     "lodash.get": "^4.4.2",
     "lodash.set": "^4.3.2",
-    "nconf": "^0.10.0",
+    "nconf": "^0.11.4",
     "netmask": "^1.0.6",
     "pjson": "^1.0.9",
     "query-string": "^6.8.3",
